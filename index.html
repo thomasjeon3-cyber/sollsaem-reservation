@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>연수원 예약현황</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+/* ── RESET & ROOT ── */
+:root {
+  --bg:      #F4F2ED;
+  --surface: #FFFFFF;
+  --dark:    #1A1714;
+  --border:  #E8E4DC;
+  --radius:  12px;
+  --shadow:  0 2px 16px rgba(0,0,0,0.07);
+  --detail-w: 340px;
+  --bar-h:   22px;
+  --bar-gap:  3px;
+  --day-top: 34px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  height: 100%; font-family: 'Noto Sans KR', sans-serif;
+  color: var(--dark); background: var(--bg);
+  overflow: hidden;
+}
+
+/* ── COVER SCREENS ── */
+.cover {
+  position: fixed; inset: 0; background: var(--dark);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; z-index: 999;
+}
+.cover.off { display: none; }
+.ld-icon { font-size: 44px; margin-bottom: 16px; animation: bob .9s ease-in-out infinite alternate; }
+@keyframes bob { to { transform: translateY(-10px); } }
+.ld-text { color: rgba(255,255,255,.55); font-size: 14px; font-weight: 600; }
+.ld-sub  { color: rgba(255,255,255,.3);  font-size: 12px; margin-top: 6px; }
+.err-box {
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px; padding: 36px 32px; max-width: 460px; width: 90%; text-align: center;
+}
+.err-icon  { font-size: 42px; margin-bottom: 14px; }
+.err-title { color: #fff; font-size: 18px; font-weight: 900; margin-bottom: 10px; }
+.err-desc  { color: rgba(255,255,255,.45); font-size: 13px; line-height: 1.8; margin-bottom: 16px; }
+.err-code  { background: rgba(255,255,255,.07); border-radius: 10px; padding: 14px 16px; text-align: left; font-size: 12px; color: #86EFAC; font-family: monospace; line-height: 2.2; margin-bottom: 16px; }
+.upload-area { border: 2px dashed rgba(255,255,255,.2); border-radius: 12px; padding: 18px; text-align: center; cursor: pointer; transition: border-color .15s; }
+.upload-area:hover { border-color: rgba(255,255,255,.5); }
+.upload-area input { display: none; }
+.upload-lbl { color: rgba(255,255,255,.55); font-size: 13px; cursor: pointer; }
+
+/* ── APP SHELL: 100vh flex column ── */
+#app { display: none; height: 100%; flex-direction: column; }
+#app.on { display: flex; }
+
+/* HEADER */
+.header {
+  flex-shrink: 0; background: var(--dark);
+  padding: 0 20px; height: 52px;
+  display: flex; align-items: center; justify-content: space-between; z-index: 300;
+}
+.h-left  { display: flex; align-items: center; gap: 8px; }
+.h-right { display: flex; align-items: center; gap: 8px; }
+.h-title { font-size: 15px; font-weight: 900; color: #fff; letter-spacing: -.4px; }
+.h-meta  { font-size: 11px; color: rgba(255,255,255,.3); }
+.reload-btn {
+  background: rgba(255,255,255,.1); border: none; border-radius: 6px;
+  padding: 5px 10px; color: rgba(255,255,255,.7); font-size: 11px;
+  font-family: inherit; cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.reload-btn:hover { background: rgba(255,255,255,.2); }
+.mob-back {
+  display: none; background: rgba(255,255,255,.1); border: none; border-radius: 6px;
+  padding: 5px 10px; color: #fff; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+
+/* STATS */
+.stats-bar {
+  flex-shrink: 0; background: var(--dark);
+  padding: 0 20px 14px; display: flex; gap: 8px; overflow-x: auto;
+}
+.stats-bar::-webkit-scrollbar { display: none; }
+.stat-card {
+  flex: 1; min-width: 90px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07);
+  border-radius: 10px; padding: 8px 12px;
+}
+.stat-label { font-size: 9px; color: rgba(255,255,255,.35); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-value { font-size: 20px; font-weight: 900; line-height: 1; }
+.stat-unit  { font-size: 10px; font-weight: 400; margin-left: 1px; }
+
+/* CSV STATUS */
+.csv-st {
+  flex-shrink: 0; padding: 7px 20px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; background: #F0FDF4; border-bottom: 1px solid #BBF7D0; color: #166534;
+}
+.csv-st.warn { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+.csv-st.off  { display: none; }
+
+/* FILTER */
+.filter-bar {
+  flex-shrink: 0; background: var(--surface);
+  padding: 8px 16px; display: flex; gap: 6px; overflow-x: auto;
+  border-bottom: 1px solid var(--border); z-index: 200;
+}
+.filter-bar::-webkit-scrollbar { display: none; }
+.fbtn {
+  white-space: nowrap; display: flex; align-items: center; gap: 5px;
+  padding: 5px 13px; border-radius: 20px; border: none; font-family: inherit;
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s; flex-shrink: 0;
+}
+.fdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── CONTENT: flex row, fills remaining ── */
+.content {
+  flex: 1; display: flex; overflow: hidden; min-height: 0;
+}
+
+/* CALENDAR PANE — 스크롤 허용으로 모든 날짜 칸 보이도록 수정 */
+.cal-pane {
+  flex: 1; min-width: 0;
+  overflow-y: auto;      /* ← overflow: hidden → overflow-y: auto 로 변경 */
+  overflow-x: hidden;
+  padding: 14px; display: flex; flex-direction: column;
+}
+.cal-pane::-webkit-scrollbar { width: 5px; }
+.cal-pane::-webkit-scrollbar-thumb { background: #CCC; border-radius: 4px; }
+
+.cal-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden;
+  flex-shrink: 0;         /* ← flex:1 → flex-shrink:0 으로 변경 (내용에 맞게 늘어남) */
+  display: flex; flex-direction: column;
+}
+.cal-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 2px solid var(--bg);
+}
+.cal-month { font-size: 18px; font-weight: 900; letter-spacing: -.8px; }
+.nav-btn {
+  width: 32px; height: 32px; border: none; background: var(--bg); border-radius: 8px;
+  font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: #555; transition: background .12s; flex-shrink: 0;
+}
+.nav-btn:hover { background: #E2DED6; }
+.wday-hdr {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  background: #FAF9F6; border-bottom: 1px solid var(--border);
+}
+.wday-cell { padding: 8px 0; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .4px; }
+.cal-body  {
+  display: flex; flex-direction: column;
+  /* overflow: hidden 제거 → 내용 전체 표시 */
+}
+
+/* WEEK ROW — 고정 최소 높이로 모든 행이 균일하게 보이도록 */
+.week-row {
+  position: relative; display: flex; flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  min-height: 120px;     /* ← flex:1 대신 고정 min-height */
+}
+.week-row:last-child { border-bottom: none; }
+
+/* Day numbers strip */
+.days-strip {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  height: var(--day-top); flex-shrink: 0;
+}
+.dnum-cell {
+  display: flex; align-items: center; padding: 4px 6px;
+  cursor: pointer; border-right: 1px solid var(--border);
+  transition: background .1s; position: relative;
+}
+.dnum-cell:last-child { border-right: none; }
+.dnum-cell.empty    { cursor: default; background: #FAFAF8; }
+.dnum-cell.today-bg { background: #FFFBF0; }
+.dnum-cell.sel-bg   { background: #EBF4FB !important; }
+.dnum-cell:not(.empty):hover { background: #F0EDE6; }
+
+.dnum-inner {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 500; flex-shrink: 0;
+}
+.dnum-inner.td { background: var(--dark); color: #fff !important; font-weight: 800; }
+
+.cnt-badge {
+  position: absolute; top: 3px; right: 4px;
+  font-size: 9px; background: var(--dark); color: #fff;
+  border-radius: 8px; padding: 1px 4px; font-weight: 700; line-height: 1.4;
+}
+/* 잔여 객실 배지 — 시설 필터 시 표시 */
+.room-badge {
+  position: absolute; top: 3px; right: 4px;
+  font-size: 9px; font-weight: 800; line-height: 1.4;
+  border-radius: 8px; padding: 1px 5px;
+  white-space: nowrap;
+}
+.room-badge.ok   { background: #D1FAE5; color: #065F46; }  /* 여유 */
+.room-badge.warn { background: #FEF3C7; color: #92400E; }  /* 주의 70%+ */
+.room-badge.full { background: #FEE2E2; color: #991B1B; }  /* 만실 */
+
+/* Events area */
+.evts-area {
+  position: relative; flex: 1;
+  padding: 3px 0 5px;
+  overflow: hidden;
+  min-height: 86px;      /* ← 이벤트 영역 최소 높이 확보 */
+}
+
+/* Invisible click grid over event area */
+.click-grid {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: repeat(7, 1fr); pointer-events: none;
+}
+.cc {
+  border-right: 1px solid var(--border); cursor: pointer; pointer-events: all;
+}
+.cc:last-child { border-right: none; }
+.cc.empty      { pointer-events: none; background: #FAFAF8; }
+.cc.sel        { background: rgba(29,111,164,.05) !important; }
+.cc:not(.empty):hover { background: rgba(0,0,0,.02); }
+
+/* EVENT BARS */
+.bars-wrap { position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; }
+.ebar {
+  position: absolute;
+  height: var(--bar-h);
+  display: flex; align-items: center;
+  font-size: 11px; font-weight: 700;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  cursor: pointer; pointer-events: all;
+  transition: opacity .12s;
+  padding: 0 6px;
+  border-radius: 3px;
+  z-index: 2;
+}
+.ebar:hover { opacity: .75; }
+.ebar.bs.be { border-radius: 4px; }
+.ebar.bs    { border-radius: 4px 0 0 4px; }
+.ebar.be    { border-radius: 0 4px 4px 0; }
+
+/* DETAIL SIDEBAR */
+.detail-sidebar {
+  width: 380px; flex-shrink: 0;
+  overflow-y: auto; padding: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg);
+}
+.detail-sidebar::-webkit-scrollbar { width: 5px; }
+.detail-sidebar::-webkit-scrollbar-thumb { background: #CCC; border-radius: 4px; }
+
+/* TAB NAV */
+.side-tabs {
+  display: flex; flex-shrink: 0;
+  background: var(--dark); border-bottom: 2px solid var(--border);
+}
+.stab {
+  flex: 1; padding: 10px 4px; border: none; background: transparent;
+  font-family: inherit; font-size: 11px; font-weight: 700; color: rgba(255,255,255,.4);
+  cursor: pointer; transition: all .15s; text-align: center; line-height: 1.4;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+}
+.stab:hover { color: rgba(255,255,255,.7); }
+.stab.on { color: #fff; border-bottom-color: #fff; }
+
+.side-panel { display: none; flex: 1; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
+.side-panel.on { display: flex; }
+.side-panel::-webkit-scrollbar { width: 4px; }
+.side-panel::-webkit-scrollbar-thumb { background: #CCC; border-radius: 4px; }
+
+/* cards */
+.det-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; flex-shrink: 0; }
+.det-empty { padding: 36px 20px; text-align: center; }
+.det-hdr { background: var(--dark); padding: 14px 16px; }
+.det-sub  { font-size: 10px; color: rgba(255,255,255,.38); margin-bottom: 2px; }
+.det-date { font-size: 15px; font-weight: 900; color: #fff; }
+.det-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.badge { border-radius: 20px; padding: 3px 9px; font-size: 10px; font-weight: 600; }
+.det-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+.res-card { border-radius: 10px; overflow: hidden; border: 1px solid rgba(0,0,0,.06); transition: transform .15s, box-shadow .15s; flex-shrink: 0; }
+.res-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.rc-hdr { padding: 7px 12px; display: flex; justify-content: space-between; align-items: center; }
+.rc-name { color: #fff; font-weight: 800; font-size: 12px; }
+.rc-sub  { color: rgba(255,255,255,.7); font-size: 10px; margin-left: 4px; }
+.vip-b   { background: rgba(255,255,255,.25); color: #fff; font-size: 9px; padding: 2px 7px; border-radius: 8px; font-weight: 700; white-space: nowrap; }
+.rc-body { padding: 10px 12px; }
+.dept    { font-weight: 800; font-size: 13px; color: var(--dark); margin-bottom: 7px; }
+.rmeta   { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 0; font-size: 11px; }
+.ml  { color: #AAA; font-size: 10px; }
+.mv  { font-weight: 600; }
+.rdate { grid-column: span 2; margin-top: 5px; background: rgba(0,0,0,.04); border-radius: 6px; padding: 5px 8px; font-size: 11px; }
+
+.lgd-card { background: var(--surface); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); flex-shrink: 0; }
+.lgd-title { font-size: 9px; font-weight: 800; color: #AAA; letter-spacing: 1px; margin-bottom: 9px; }
+.lgd-row  { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.lgd-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.lgd-name { font-size: 12px; font-weight: 700; flex: 1; }
+.lgd-sub  { font-size: 10px; color: #999; background: #F5F3EE; padding: 2px 7px; border-radius: 8px; }
+.lgd-note { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); font-size: 10px; color: #999; }
+
+/* SEARCH PANELS */
+.search-box {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden; flex-shrink: 0;
+}
+.search-hdr { background: var(--dark); padding: 12px 14px; }
+.search-hdr-title { font-size: 13px; font-weight: 900; color: #fff; margin-bottom: 10px; }
+.search-input-wrap { position: relative; }
+.search-input {
+  width: 100%; padding: 8px 12px 8px 32px;
+  border: none; border-radius: 8px; font-family: inherit; font-size: 12px;
+  background: rgba(255,255,255,.12); color: #fff; outline: none;
+}
+.search-input::placeholder { color: rgba(255,255,255,.4); }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; pointer-events: none; }
+.search-select {
+  width: 100%; padding: 8px 12px;
+  border: none; border-radius: 8px; font-family: inherit; font-size: 12px;
+  background: rgba(255,255,255,.12); color: #fff; outline: none; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+}
+.search-select option { background: #1A1714; color: #fff; }
+
+.result-empty { padding: 24px 14px; text-align: center; color: #BBB; font-size: 12px; }
+
+/* Summary stat row */
+.sum-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sum-cell { text-align: center; }
+.sum-val  { font-size: 22px; font-weight: 900; color: var(--dark); line-height: 1; }
+.sum-unit { font-size: 10px; font-weight: 400; color: #999; margin-left: 1px; }
+.sum-lbl  { font-size: 9px; color: #AAA; margin-top: 3px; }
+
+/* Per-location breakdown */
+.loc-rows { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.loc-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px; background: var(--bg);
+}
+.loc-color { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.loc-row-name { font-size: 12px; font-weight: 700; flex: 1; }
+.loc-stats { display: flex; gap: 10px; }
+.loc-stat  { text-align: right; }
+.loc-stat-val { font-size: 13px; font-weight: 800; }
+.loc-stat-lbl { font-size: 9px; color: #AAA; display: block; }
+
+/* User result list */
+.user-result-list { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.user-result-list::-webkit-scrollbar { width: 4px; }
+.user-result-list::-webkit-scrollbar-thumb { background: #DDD; border-radius: 4px; }
+.user-item {
+  padding: 8px 10px; border-radius: 8px; background: var(--bg);
+  cursor: pointer; transition: background .12s; border: 1px solid transparent;
+}
+.user-item:hover { background: #EBF4FB; border-color: #1D6FA4; }
+.user-item.sel { background: #EBF4FB; border-color: #1D6FA4; }
+.user-item-name { font-size: 13px; font-weight: 800; color: var(--dark); }
+.user-item-dept { font-size: 11px; color: #888; margin-top: 1px; }
+
+/* date range filter */
+.date-range-wrap { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.date-input {
+  flex: 1; padding: 6px 8px; border: none; border-radius: 6px;
+  font-family: inherit; font-size: 11px;
+  background: rgba(255,255,255,.12); color: #fff; outline: none;
+}
+.date-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .5; }
+.date-sep { color: rgba(255,255,255,.4); font-size: 11px; flex-shrink: 0; }
+.clear-btn {
+  padding: 6px 10px; border: none; border-radius: 6px;
+  background: rgba(255,255,255,.15); color: rgba(255,255,255,.7);
+  font-family: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.clear-btn:hover { background: rgba(255,255,255,.25); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  body { overflow: auto; }
+  #app { height: auto; min-height: 100vh; overflow: auto; }
+  .content { flex-direction: column; overflow: visible; height: auto; }
+  .cal-pane { overflow: visible; padding: 10px; flex: none; }
+  .cal-card { flex: none; }
+  .detail-sidebar {
+    width: 100%; border-left: none; border-top: 1px solid var(--border); overflow: visible;
+    padding: 0;
+  }
+  .side-panel { overflow: visible; max-height: none; }
+  .detail-sidebar.mhide { display: none; }
+  .cal-pane.mhide { display: none; }
+  .mob-back { display: inline-block !important; }
+  .stat-card { min-width: 80px; }
+  .week-row  { min-height: 100px; }
+  .ebar      { font-size: 9px; padding: 0 4px; }
+  .reload-btn .rtxt { display: none; }
+}
+@media (max-width: 480px) {
+  .stat-card { min-width: 44%; }
+}
+
+
+
+/* ── TOOLTIP ── */
+#bar-tooltip {
+  position: fixed; z-index: 9000; pointer-events: none;
+  background: #1A1714; color: #F4F2ED;
+  border-radius: 10px; padding: 10px 13px; font-size: 12px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.22);
+  min-width: 200px; max-width: 280px;
+  opacity: 0; transition: opacity .12s;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+#bar-tooltip.show { opacity: 1; }
+.tt-head { font-weight: 900; font-size: 13px; margin-bottom: 6px;
+           border-bottom: 1px solid rgba(128,128,128,.25); padding-bottom: 5px; }
+.tt-row  { display: flex; gap: 6px; margin-top: 4px; align-items: flex-start; }
+.tt-lbl  { color: rgba(128,128,128,.7); font-size: 10px; flex-shrink: 0; min-width: 32px; }
+.tt-val  { font-weight: 600; font-size: 11px; }
+.tt-vip  { display: inline-block; background: #B7950B; color: #fff;
+           font-size: 9px; padding: 1px 6px; border-radius: 6px; font-weight: 800; }
+
+/* ── MODAL ── */
+#bar-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  z-index: 8000; display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+#bar-modal-overlay.show { display: flex; }
+#bar-modal {
+  background: var(--surface); border-radius: 16px; width: 92%; max-width: 420px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.28); overflow: hidden;
+  animation: modalIn .18s ease;
+}
+@keyframes modalIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-hdr {
+  padding: 14px 16px; display: flex; justify-content: space-between; align-items: flex-start;
+}
+.modal-title { font-size: 15px; font-weight: 900; color: #fff; }
+.modal-sub   { font-size: 11px; color: rgba(255,255,255,.6); margin-top: 2px; }
+.modal-close {
+  width: 28px; height: 28px; background: rgba(255,255,255,.15); border: none;
+  border-radius: 50%; color: #fff; font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.modal-close:hover { background: rgba(255,255,255,.3); }
+.modal-body  { padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-field { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.modal-field.full { grid-column: span 2; }
+.mf-lbl { font-size: 9px; color: #AAA; font-weight: 700; letter-spacing: .6px; margin-bottom: 3px; }
+.mf-val { font-size: 13px; font-weight: 700; color: var(--dark); }
+.mf-vip { display: inline-block; background: #B7950B; color: #fff;
+          font-size: 10px; padding: 2px 8px; border-radius: 6px; font-weight: 800; margin-left: 6px; }
+.modal-footer {
+  padding: 10px 16px; border-top: 1px solid var(--border);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.modal-btn {
+  padding: 7px 14px; border: none; border-radius: 8px; font-family: inherit;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.modal-btn.primary { background: var(--dark); color: #fff; }
+.modal-btn.primary:hover { opacity: .85; }
+.modal-btn.ghost  { background: var(--bg); color: #555; }
+.modal-btn.ghost:hover { background: var(--border); }
+
+/* ── VIP GOLD BORDER ── */
+.ebar.vip-bar {
+  box-shadow: 0 0 0 2px #B7950B, inset 0 0 0 1px rgba(183,149,11,.3);
+  z-index: 3;
+}
+
+/* ── OCCUPANCY STATS ── */
+.stat-card.occ-card { min-width: 120px; }
+.occ-bar-track {
+  height: 4px; background: rgba(255,255,255,.1); border-radius: 2px; margin-top: 5px;
+}
+.occ-bar-fill {
+  height: 100%; border-radius: 2px; transition: width .4s ease;
+}
+.stat-occ { font-size: 10px; color: rgba(255,255,255,.45); margin-top: 2px; }
+.stat-rooms { font-size: 9px; color: rgba(255,255,255,.28); margin-top: 1px; }
+
+/* ── PRINT ── */
+@media print {
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { background: #fff !important; overflow: visible !important; }
+  #app { height: auto !important; overflow: visible !important; }
+  .header, .stats-bar, .filter-bar, .cal-pane, .side-tabs,
+  #panel-user, #panel-loc, .reload-btn, .mob-back,
+  #bar-tooltip, #bar-modal-overlay { display: none !important; }
+  .content { overflow: visible !important; }
+  .detail-sidebar {
+    width: 100% !important; border: none !important;
+    overflow: visible !important; height: auto !important;
+  }
+  #panel-date { display: flex !important; padding: 0 !important; }
+  .det-card, .lgd-card { box-shadow: none !important; border: 1px solid #DDD; break-inside: avoid; }
+  .res-card { break-inside: avoid; }
+  .det-hdr { background: #1A1714 !important; }
+  .rc-hdr  { -webkit-print-color-adjust: exact !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOOLTIP -->
+<div id="bar-tooltip">
+  <div class="tt-head" id="tt-head"></div>
+  <div id="tt-body"></div>
+</div>
+
+<!-- MODAL -->
+<div id="bar-modal-overlay" onclick="closeModal(event)">
+  <div id="bar-modal">
+    <div class="modal-hdr" id="modal-hdr">
+      <div>
+        <div class="modal-title" id="modal-title"></div>
+        <div class="modal-sub"  id="modal-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModalBtn()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="modal-btn ghost" onclick="closeModalBtn()">닫기</button>
+      <button class="modal-btn primary" id="modal-go-btn">날짜로 이동</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- LOADING -->
+<div id="ld" class="cover">
+  <div class="ld-icon">🌲</div>
+  <div class="ld-text">예약 데이터를 불러오는 중...</div>
+  <div class="ld-sub" id="ld-sub">data.csv 파일을 읽고 있어요</div>
+</div>
+
+<!-- ERROR -->
+<div id="er" class="cover off">
+  <div class="err-box">
+    <div class="err-icon">📡</div>
+    <div class="err-title">데이터를 불러올 수 없어요</div>
+    <div class="err-desc">구글 시트에 연결할 수 없어요.<br>아래 사항을 확인해주세요.</div>
+    <div class="err-code">
+      1. 구글 시트 → [파일] → [공유]<br>
+      &nbsp;&nbsp;&nbsp;→ [웹에 게시] 가 활성화되어 있는지 확인<br>
+      2. 인터넷 연결 상태 확인<br>
+      3. 아래에서 CSV 파일 직접 업로드 가능
+    </div>
+    <div class="upload-area" onclick="document.getElementById('cfi').click()">
+      <input type="file" id="cfi" accept=".csv" onchange="handleUpload(event)">
+      <div class="upload-lbl">📎 CSV 파일 직접 선택 (오프라인 대체용)</div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="header">
+    <div class="h-left">
+      <button class="mob-back" id="back-btn" onclick="showCalMobile()">← 달력</button>
+      <span class="h-title">🌲 연수원 예약현황</span>
+    </div>
+    <div class="h-right">
+      <span class="h-meta" id="hmeta"></span>
+      <button class="reload-btn" id="reload-btn" onclick="reloadCSV()">🔄 <span class="rtxt">데이터 새로고침</span></button>
+    </div>
+  </div>
+
+  <div class="stats-bar" id="stats-bar"></div>
+  <div class="csv-st off" id="csvst"></div>
+  <div class="filter-bar" id="filter-bar"></div>
+
+  <div class="content">
+    <!-- Calendar pane -->
+    <div class="cal-pane" id="cal-pane">
+      <div class="cal-card">
+        <div class="cal-nav">
+          <button class="nav-btn" onclick="prevMonth()">‹</button>
+          <span class="cal-month" id="cal-title"></span>
+          <button class="nav-btn" onclick="nextMonth()">›</button>
+        </div>
+        <div class="wday-hdr">
+          <div class="wday-cell" style="color:#DC2626">일</div>
+          <div class="wday-cell" style="color:#888">월</div>
+          <div class="wday-cell" style="color:#888">화</div>
+          <div class="wday-cell" style="color:#888">수</div>
+          <div class="wday-cell" style="color:#888">목</div>
+          <div class="wday-cell" style="color:#888">금</div>
+          <div class="wday-cell" style="color:#2563EB">토</div>
+        </div>
+        <div class="cal-body" id="cal-body"></div>
+      </div>
+    </div>
+
+    <!-- Detail sidebar -->
+    <div class="detail-sidebar mhide" id="det-sidebar">
+
+      <!-- TAB NAV -->
+      <div class="side-tabs">
+        <button class="stab on"  id="tab-date" onclick="switchTab('date')">📅<br>날짜 상세</button>
+        <button class="stab"     id="tab-user" onclick="switchTab('user')">👤<br>사용자 조회</button>
+        <button class="stab"     id="tab-loc"  onclick="switchTab('loc')">🏨<br>시설 조회</button>
+      </div>
+
+      <!-- PANEL 1: 날짜 상세 -->
+      <div class="side-panel on" id="panel-date">
+        <div class="det-card" id="det-card">
+          <div class="det-empty">
+            <div style="font-size:36px;margin-bottom:10px">📅</div>
+            <div style="font-size:13px;font-weight:700;color:#999;margin-bottom:5px">날짜를 선택하세요</div>
+            <div style="font-size:11px;color:#C8C4BD;line-height:1.7">달력에서 날짜를 클릭하면<br>예약 상세 내역을 확인할 수 있어요</div>
+          </div>
+        </div>
+        <div class="lgd-card" id="lgd-card"></div>
+      </div>
+
+      <!-- PANEL 2: 사용자 조회 -->
+      <div class="side-panel" id="panel-user">
+        <div class="search-box">
+          <div class="search-hdr">
+            <div class="search-hdr-title">👤 사용자 조회</div>
+            <div class="search-input-wrap">
+              <span class="search-icon">🔍</span>
+              <input class="search-input" id="user-input" type="text"
+                placeholder="사용자 이름 검색..."
+                oninput="onUserInput(this.value)">
+            </div>
+            <div class="date-range-wrap">
+              <input class="date-input" id="user-from" type="date" onchange="renderUserResult()">
+              <span class="date-sep">~</span>
+              <input class="date-input" id="user-to"   type="date" onchange="renderUserResult()">
+              <button class="clear-btn" onclick="clearUserDates()">전체</button>
+            </div>
+          </div>
+          <!-- 자동완성 목록 -->
+          <div id="user-list"></div>
+        </div>
+        <!-- 결과 -->
+        <div class="search-box" id="user-result" style="display:none"></div>
+      </div>
+
+      <!-- PANEL 3: 시설 조회 -->
+      <div class="side-panel" id="panel-loc">
+        <div class="search-box">
+          <div class="search-hdr">
+            <div class="search-hdr-title">🏨 시설 조회</div>
+            <select class="search-select" id="loc-select" onchange="renderLocResult()">
+              <option value="">— 시설을 선택하세요 —</option>
+            </select>
+            <div class="date-range-wrap">
+              <input class="date-input" id="loc-from" type="date" onchange="renderLocResult()">
+              <span class="date-sep">~</span>
+              <input class="date-input" id="loc-to"   type="date" onchange="renderLocResult()">
+              <button class="clear-btn" onclick="clearLocDates()">전체</button>
+            </div>
+          </div>
+        </div>
+        <div class="search-box" id="loc-result" style="display:none"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══ CONFIG ══ */
+const CSV_FILE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNqEH0rXZtJuzWD2uL2Qo2daIqSzTUcYBtoRbE7xhJZ2sDJkhdc4yUh7tPpqNJxRoq2NFQcgmLHQFV/pub?gid=1555270590&single=true&output=csv";
+const COL_MAP = {
+  "부서":"부서","신청자":"신청자","사용일자(시작)":"시작","사용일자(종료)":"종료",
+  "사용자":"사용자","사용지역":"지역","사용방갯수":"방수","(구)VIP룸":"vip","사용목적":"목적","호실":"호실"
+};
+
+/* ══ 내장 백업 데이터 (2025-01-01 이후 엑셀 원본)
+   형식: [부서, 신청자, 시작, 종료, 사용자, 지역, 방수, vip] ══ */
+const BACKUP_RAW = [["HR부","이종현 부장","2025-01-03","2025-01-05","이종현 부장","솔샘연수원",2,"사용"],["임원실","박인호 전무","2025-01-03","2025-01-05","박인호 전무","평창연수원",1,"미사용"],["총무팀","최광호 부장","2025-01-04","2025-01-05","최광호 부장","평창연수원",1,"미사용"],["임원실","김태우 상무","2025-01-08","2025-01-09","김태우 상무","솔샘연수원",0,"사용"],["수출팀","박영주 차장","2025-01-10","2025-01-12","박영주 차장","평창연수원",1,"미사용"],["생산2팀","김동권 과장","2025-01-10","2025-01-12","김동권 과장","평창연수원",1,"미사용"],["부자재구매부","장대겸 차장","2025-01-10","2025-01-12","장대겸 차장","평창연수원",1,"미사용"],["임원실","유영균 이사","2025-01-11","2025-01-12","유영균 이사","솔샘연수원",1,"사용"],["Pattern팀","최승구 실장","2025-01-11","2025-01-12","최승구 실장","솔샘연수원",2,"미사용"],["3D팀","주효정 주임","2025-01-11","2025-01-12","주효정 주임","솔샘연수원",2,"미사용"],["사업2부1팀","박경엽 대리","2025-01-11","2025-01-12","박경엽 대리","솔샘연수원",1,"미사용"],["사업3부4팀","염유섭 차장","2025-01-17","2025-01-19","염유섭 차장","평창연수원",1,"미사용"],["생산2팀","김동수 과장","2025-01-18","2025-01-19","김경정(누나)","솔샘연수원",5,"미사용"],["생산1팀","유택규 과장","2025-01-18","2025-01-19","유택규 과장","솔샘연수원",1,"사용"],["사업4부2팀","정재선 차장","2025-01-18","2025-01-19","정재선 차장","솔샘연수원",3,"미사용"],["사업3부2팀","김지수 주임","2025-01-18","2025-01-19","김지수 주임","평창연수원",1,"미사용"],["봉제전략부","최효정 과장","2025-01-18","2025-01-19","최효정 과장","평창연수원",1,"미사용"],["임원실","강진숙 이사","2025-01-24","2025-01-26","강진숙 이사","평창연수원",1,"미사용"],["3D팀","주효정 주임","2025-01-24","2025-01-27","주효정 주임","평창연수원",1,"미사용"],["사업6부1팀","맹재영 과장","2025-01-25","2025-01-26","맹재영 과장","솔샘연수원",2,"미사용"],["생산2팀","배현일 차장","2025-01-25","2025-01-26","배영제(아버지)","솔샘연수원",3,"미사용"],["사업1부2팀","윤진이 부장","2025-01-25","2025-01-26","윤진이 부장","솔샘연수원",3,"미사용"],["수출팀","신선미 차장","2025-01-25","2025-01-30","신선미 차장","평창연수원",1,"미사용"],["사업11부","신선미 차장","2025-01-25","2025-01-30","신선미 차장","평창연수원",1,"미사용"],["임원실","회장님","2025-01-26","2025-01-27","회장님","솔샘연수원",0,"미사용"],["재무부","신현정 과장","2025-01-26","2025-01-27","신현정 과장","솔샘연수원",0,"사용"],["생산1팀","김요한 과장","2025-01-26","2025-01-30","김요한 과장","평창연수원",1,"미사용"],["사업7부1팀","이진솔 과장","2025-01-27","2025-01-28","이진솔 과장","평창연수원",1,"미사용"],["생산1팀","유택규 과장","2025-01-29","2025-02-02","유택규 과장","평창연수원",1,"미사용"],["사업3부4팀","염유섭 차장","2025-01-30","2025-02-02","염유섭 차장","평창연수원",1,"미사용"],["사업3부2팀","양화경 차장","2025-02-01","2025-02-02","조순옥(어머니)","솔샘연수원",1,"미사용"],["사업3부2팀","양화경 차장","2025-02-07","2025-02-09","양화경 차장","평창연수원",1,"미사용"],["물류팀","박대준 계장","2025-02-08","2025-02-09","박대준 계장","솔샘연수원",0,"사용"],["총무부","최광호 부장","2025-02-14","2025-03-04","KO-STA","평창연수원",3,"미사용"],["사업2부2팀","윤지연 차장","2025-02-15","2025-02-16","윤지연 차장","솔샘연수원",6,"미사용"],["사업6부1팀","채미영 과장","2025-02-15","2025-02-16","채미영 과장","솔샘연수원",1,"미사용"],["총무팀","정예린 과장","2025-02-16","2025-02-17","이양재 교수님 \n둘째 따님","솔샘연수원",1,"사용"],["사업11부2팀","양승욱 과장","2025-02-21","2025-02-23","양승욱 과장","솔샘연수원",5,"사용"],["총무팀","이해랑 차장","2025-02-22","2025-02-23","이해랑 차장","솔샘연수원",2,"미사용"],["사업2부1팀","변종성 과장","2025-02-22","2025-02-23","변종성 과장","솔샘연수원",3,"미사용"],["사업11부2팀","양승욱 과장","2025-02-28","2025-03-02","양승욱 과장","솔샘연수원",6,"미사용"],["3D팀","주효정 주임","2025-03-01","2025-03-02","주제무(오빠)","솔샘연수원",2,"미사용"],["사업7부4팀","하회준 과장","2025-03-08","2025-03-09","하회준 과장","솔샘연수원",5,"미사용"],["사업3부2팀","양화경 차장","2025-03-08","2025-03-09","양화경 차장","솔샘연수원",0,"사용"],["사업3부4팀","염유섭 차장","2025-03-08","2025-03-10","염유섭 차장","평창연수원",1,"미사용"],["TFM","김보미 과장","2025-03-14","2025-03-15","사업3부&TFM","솔샘연수원",4,"사용"],["임원실","회장님","2025-03-15","2025-03-16","회장님","솔샘연수원",0,"미사용"],["총무팀","김연옥 과장","2025-03-15","2025-03-16","김연옥 과장","솔샘연수원",3,"사용"],["3D팀","이경아 과장","2025-03-15","2025-03-16","이경아 과장","솔샘연수원",3,"미사용"],["재무부","곽준우 차장","2025-03-21","2025-03-23","곽준우 차장","솔샘연수원",1,"사용"],["통합원단부2팀","김요한 과장","2025-03-21","2025-03-23","김요한 과장","평창연수원",1,"미사용"],["사업6부1팀","채미영 과장","2025-03-22","2025-03-23","채미영 과장","솔샘연수원",2,"미사용"],["임원실","회장님","2025-03-22","2025-03-23","회장님","한솔연수원(무이리)",0,"미사용"],["총무팀","정예린 과장","2025-03-29","2025-03-30","이양재 교수님","솔샘연수원",0,"미사용"],["Hanway ERP부","여윤정 차장","2025-03-29","2025-03-30","여윤정 차장","솔샘연수원",0,"사용"],["총무팀","전현수 대리","2025-03-29","2025-03-30","전현수 대리","솔샘연수원",1,"미사용"],["사업6부2팀","이종현 차장","2025-03-29","2025-03-30","이종현 차장","솔샘연수원",3,"미사용"],["정산관리팀","금동준 계장","2025-03-29","2025-03-30","금동준 계장","솔샘연수원",4,"미사용"],["임원실","유영균 이사","2025-03-29","2025-03-30","유영균 이사","평창연수원",1,"미사용"],["사업6부2팀","김명수 차장","2025-03-29","2025-03-30","김명수 차장","평창연수원",1,"미사용"],["사업3부2팀","오은진 사원","2025-03-30","2025-03-31","오은진 사원","솔샘연수원",1,"미사용"],["HR부","이가영 대리","2025-04-04","2025-04-05","이가영 대리","솔샘연수원",1,"미사용"],["Hanway ERP부","김재영 과장","2025-04-05","2025-04-06","김재영 과장","솔샘연수원",2,"사용"],["사업3부4팀","김선우 대리","2025-04-05","2025-04-06","김선우 대리","솔샘연수원",2,"미사용"],["Pattern팀","최승구 실장","2025-04-05","2025-04-06","최승구 실장","솔샘연수원",2,"미사용"],["생산1팀","김요한 과장","2025-04-11","2025-04-13","김요한 과장","평창연수원",1,"미사용"],["IT부","신대용 과장","2025-04-12","2025-04-13","신대용 과장","솔샘연수원",1,"미사용"],["사업4부2팀","정재선 차장","2025-04-12","2025-04-13","정재선 차장","솔샘연수원",1,"사용"],["재무부","박형철 대리","2025-04-12","2025-04-13","박형철 대리","솔샘연수원",2,"미사용"],["임원실","회장님","2025-04-12","2025-04-13","회장님","솔샘연수원",0,"미사용"],["사업4부1팀","안윤정 과장","2025-04-12","2025-04-13","안윤정 과장","솔샘연수원",5,"미사용"],["사업10부2팀","박소연 주임","2025-04-12","2025-04-13","박소연 주임","솔샘연수원",2,"미사용"],["임원실","김재호 이사","2025-04-13","2025-04-15","김재호 이사","솔샘연수원",1,"사용"],["부자재구매부","윤현섭 차장","2025-04-18","2025-04-19","양영순(어머니)","솔샘연수원",1,"미사용"],["생산1팀","유택규 과장","2025-04-18","2025-04-21","유택규 과장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-04-18","2025-04-20","엄진이 전무","한솔연수원(무이리)",2,"미사용"],["생산2팀","김동수 과장","2025-04-19","2025-04-20","김경정(누나)","솔샘연수원",5,"미사용"],["사업6부2팀","이종현 차장","2025-04-19","2025-04-20","이종현 차장","솔샘연수원",6,"사용"],["해외재무부","금강산 과장","2025-04-25","2025-04-27","금강산 과장","평창연수원",1,"미사용"],["재무부","신남진 부장","2025-04-26","2025-04-27","신남진 부장","솔샘연수원",3,"미사용"],["사업3부3팀","유현숙 과장","2025-04-26","2025-04-27","유현숙 과장","솔샘연수원",1,"사용"],["사업4부2팀","정재선 차장","2025-04-26","2025-04-27","정재선 차장","솔샘연수원",3,"미사용"],["사업2부1팀","김종엽 부장","2025-04-26","2025-04-27","김종엽 부장","솔샘연수원",2,"미사용"],["사업3부2팀","양화경 차장","2025-04-26","2025-04-27","조순옥(어머니)","솔샘연수원",2,"미사용"],["총무팀","김연옥 차장","2025-04-26","2025-04-27","이은솔 대리","솔샘연수원",0,"미사용"],["임원실","회장님","2025-04-26","2025-04-27","회장님","한솔연수원(무이리)",0,"미사용"],["임원실","김맹호 상무","2025-04-29","2025-04-30","이석우 님\n(前 남양주 시장)","솔샘연수원",0,"사용"],["총무팀","전현수 과장","2025-05-01","2025-05-01","법무법인 오라클","솔샘연수원",0,"사용"],["사업6부1팀","채미영 과장","2025-05-01","2025-05-02","채미영 과장","솔샘연수원",2,"미사용"],["CSR/Sustainability부","조아라 사원","2025-05-01","2025-05-02","조아라 사원","솔샘연수원",1,"미사용"],["생산1팀","유택규 과장","2025-05-02","2025-05-06","유택규 과장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-05-02","2025-05-04","엄진이 전무","한솔연수원(무이리)",3,"미사용"],["물류팀","박대준 계장","2025-05-03","2025-05-04","박대근(형)","솔샘연수원",3,"미사용"],["사업3부2팀","김영주 차장","2025-05-03","2025-05-04","김영주 차장","솔샘연수원",0,"사용"],["HR부","이종현 부장","2025-05-03","2025-05-05","이종현 부장","솔샘연수원",5,"미사용"],["임원실","유영균 이사","2025-05-03","2025-05-04","유영균 이사","솔샘연수원",5,"미사용"],["재무부","곽준우 차장","2025-05-03","2025-05-06","곽준우 차장","평창연수원",1,"미사용"],["사업11부2팀","양승욱 과장","2025-05-03","2025-05-06","양승욱 과장","평창연수원",1,"미사용"],["TFM","김보미 차장","2025-05-04","2025-05-06","김보미 차장","솔샘연수원",3,"미사용"],["통합원단부1팀","김연미 차장","2025-05-04","2025-05-05","박지영 차장","솔샘연수원",3,"미사용"],["사업10부2팀","박소연 주임","2025-05-04","2025-05-05","박소연 주임","솔샘연수원",2,"미사용"],["총무팀","박용진 차장","2025-05-04","2025-05-05","박용진 차장","솔샘연수원",0,"사용"],["해외재무부","류인표 부장","2025-05-04","2025-05-05","류인표 부장","한솔연수원(무이리)",2,"미사용"],["사업6부1팀","맹재영 과장","2025-05-05","2025-05-06","맹재영 과장","솔샘연수원",0,"사용"],["사업4부1팀","최신우 차장","2025-05-05","2025-05-06","박지영 차장","솔샘연수원",6,"미사용"],["통합원단부1팀","김연미 차장","2025-05-05","2025-05-06","김연미 차장","솔샘연수원",4,"미사용"],["해외재무부","서수민 대리","2025-05-09","2025-05-11","서수민 대리","평창연수원",1,"미사용"],["임원실","회장님","2025-05-10","2025-05-11","회장님","솔샘연수원",0,"미사용"],["QA부","김지영 차장","2025-05-10","2025-05-11","김지영 차장","솔샘연수원",0,"사용"],["Pattern팀","최승구 실장","2025-05-10","2025-05-11","최승구 실장","솔샘연수원",2,"미사용"],["사업4부2팀","정재선 차장","2025-05-10","2025-05-11","정재선 차장","솔샘연수원",2,"미사용"],["사업11부","이지연 차장","2025-05-10","2025-05-11","이지연 차장","솔샘연수원",3,"미사용"],["3D팀","주효정 주임","2025-05-16","2025-05-17","주제무(오빠)","솔샘연수원",1,"미사용"],["사업11부","양승욱 과장","2025-05-16","2025-05-18","양승욱 과장","평창연수원",1,"미사용"],["재무부","이범석 과장","2025-05-17","2025-05-18","이범석 과장","솔샘연수원",3,"미사용"],["총무팀","이해랑 차장","2025-05-17","2025-05-18","이해랑 차장","솔샘연수원",4,"사용"],["3D팀","주효정 주임","2025-05-17","2025-05-18","주제무(오빠)","솔샘연수원",2,"미사용"],["Pattern팀","최승구 실장","2025-05-17","2025-05-18","최승구 실장","솔샘연수원",2,"미사용"],["재무부","신남진 부장","2025-05-17","2025-05-18","김영재 실장\n(법무법인 오라클)","솔샘연수원",2,"미사용"],["임원실","회장님","2025-05-17","2025-05-18","회장님","한솔연수원(무이리)",0,"미사용"],["임원실","김재호 이사","2025-05-23","2025-05-24","이건숙(배우자)","솔샘연수원",2,"미사용"],["생산1팀","유택규 과장","2025-05-23","2025-05-25","유택규 과장","평창연수원",1,"미사용"],["총무팀","김연옥 차장","2025-05-24","2025-05-25","KO-STA","솔샘연수원",3,"사용"],["임원실","엄진이 전무","2025-05-30","2025-05-31","본사 임원","솔샘연수원",9,"사용"],["사업3부2팀","유현숙 과장","2025-05-31","2025-06-01","유현숙 과장","솔샘연수원",5,"사용"],["사업3부4팀","김영덕 차장","2025-05-31","2025-06-01","김영덕 차장","솔샘연수원",2,"미사용"],["Hanway ERP부","김재영 과장","2025-05-31","2025-06-01","김재영 과장","솔샘연수원",2,"미사용"],["자금부","이재성 차장","2025-06-01","2025-06-03","이재성 차장","평창연수원",1,"미사용"],["총무부","최광호 부장","2025-06-02","2025-06-03","주현식(Ko-STA 코치)","평창연수원",1,"미사용"],["HR부","이종현 부장","2025-06-05","2025-06-07","이종현 부장","솔샘연수원",4,"사용"],["생산2팀","김동권 과장","2025-06-05","2025-06-08","김동권 과장","평창연수원",1,"미사용"],["IT부","고영석 차장","2025-06-05","2025-06-08","고영석 차장","평창연수원",1,"미사용"],["사업6부1팀","맹재영 과장","2025-06-06","2025-06-07","맹재영 과장","솔샘연수원",3,"미사용"],["생산1팀","김요한 과장","2025-06-06","2025-06-08","김요한 과장","솔샘연수원",5,"미사용"],["생산1팀","유택규 과장","2025-06-07","2025-06-08","유택규 과장","솔샘연수원",1,"사용"],["사업11부","강세명 부장","2025-06-07","2025-06-08","강세명 부장","솔샘연수원",6,"미사용"],["사업2부1팀","변종성 과장","2025-06-13","2025-06-14","변완규(아버지)","솔샘연수원",3,"미사용"],["임원실","회장님","2025-06-14","2025-06-15","회장님","솔샘연수원",0,"미사용"],["IT부","신대용 과장","2025-06-14","2025-06-15","신대용 과장","솔샘연수원",0,"사용"],["사업6부2팀","이종현 차장","2025-06-14","2025-06-15","이종현 차장","솔샘연수원",3,"미사용"],["3D팀","주효정 주임","2025-06-14","2025-06-15","주효정 주임","솔샘연수원",4,"미사용"],["정산관리팀","임진희 대리","2025-06-14","2025-06-15","김화신(어머니)","솔샘연수원",2,"미사용"],["CAD팀","제자연 대리","2025-06-14","2025-06-15","제자연 대리","솔샘연수원",2,"미사용"],["임원실","엄진이 전무","2025-06-20","2025-06-22","엄진이 전무","한솔연수원(무이리)",3,"미사용"],["사업3부2팀","양화경 차장","2025-06-21","2025-06-22","양화경 차장","솔샘연수원",0,"사용"],["총무팀","박용진 차장","2025-06-21","2025-06-22","박용진 차장","솔샘연수원",4,"미사용"],["TFM","김보미 차장","2025-06-21","2025-06-22","김보미 차장","솔샘연수원",2,"미사용"],["사업6부2팀","이아름 과장","2025-06-21","2025-06-22","이아름 과장","솔샘연수원",2,"미사용"],["통합원단부3팀","박향근 차장","2025-06-21","2025-06-22","박향근 차장","솔샘연수원",2,"미사용"],["해외재무부","서수민 대리","2025-06-21","2025-06-22","서수민 대리","솔샘연수원",2,"미사용"],["디자인2팀","박지영 차장","2025-06-26","2025-06-27","디자인팀","솔샘연수원",9,"사용"],["생산2팀","이진기 과장","2025-06-26","2025-06-29","이진기 과장","평창연수원",1,"미사용"],["생산2팀","김동수 과장","2025-06-27","2025-06-28","정외조(어머니)","솔샘연수원",2,"미사용"],["사업3부4팀","염유섭 차장","2025-06-27","2025-06-29","염유섭 차장","평창연수원",1,"미사용"],["사업2부1팀","김종엽 부장","2025-06-28","2025-06-29","김종엽 부장","솔샘연수원",0,"사용"],["Pattern팀","최승구 실장","2025-06-28","2025-06-29","최승구 실장","솔샘연수원",3,"미사용"],["사업3부4팀","김영덕 차장","2025-06-28","2025-06-29","김영덕 차장","솔샘연수원",2,"미사용"],["사업3부3팀","유현숙 과장","2025-06-28","2025-06-29","유현숙 과장","솔샘연수원",4,"미사용"],["생산1팀","김요한 과장","2025-06-28","2025-06-30","김요한 과장","평창연수원",1,"미사용"],["임원실","회장님","2025-06-28","2025-06-29","회장님","한솔연수원(무이리)",0,"미사용"],["재무부","신남진 부장","2025-07-04","2025-07-06","김영재 실장\n(법무법인 오라클)","솔샘연수원",2,"미사용"],["사업4부3팀","정재선 차장","2025-07-04","2025-07-06","정재선 차장","솔샘연수원",2,"미사용"],["해외재무부","금강산 과장","2025-07-05","2025-07-06","금강산 과장","솔샘연수원",0,"사용"],["사업6부2팀","이아름 과장","2025-07-05","2025-07-06","이아름 과장","솔샘연수원",5,"미사용"],["사업6부2팀","이종현 차장","2025-07-05","2025-07-06","이종현 차장","솔샘연수원",2,"미사용"],["사회공헌부","이슬기 차장","2025-07-05","2025-07-06","이슬기 차장","솔샘연수원",1,"미사용"],["재무부","곽준우 차장","2025-07-05","2025-07-06","곽준우 차장","평창연수원",1,"미사용"],["재무부","곽준우 차장","2025-07-05","2025-07-06","곽준우 차장","평창연수원",1,"미사용"],["생산2팀","김동권 과장","2025-07-10","2025-07-14","김동권 과장","평창연수원",1,"미사용"],["재무부","신현정 과장","2025-07-12","2025-07-13","신현정 과장","솔샘연수원",0,"사용"],["재무부","이범석 과장","2025-07-12","2025-07-13","이범석 과장","솔샘연수원",3,"미사용"],["사업2부2팀","윤지연 차장","2025-07-12","2025-07-13","윤지연 차장","솔샘연수원",4,"미사용"],["Hanway ERP부","여윤정 차장","2025-07-12","2025-07-13","여윤정 차장","솔샘연수원",2,"미사용"],["3D팀","주효정 주임","2025-07-12","2025-07-13","주제무(오빠)","솔샘연수원",3,"미사용"],["임원실","회장님","2025-07-12","2025-07-13","회장님","솔샘연수원",0,"미사용"],["사업7부4팀","홍민재 차장","2025-07-13","2025-07-14","홍민재 차장","솔샘연수원",3,"미사용"],["사업3부4팀","김선우 대리","2025-07-18","2025-07-19","김선우 대리","솔샘연수원",0,"사용"],["총무팀","전현수 과장","2025-07-18","2025-07-20","이양재 교수님","솔샘연수원",0,"미사용"],["해외재무부","금강산 과장","2025-07-18","2025-07-20","금강산 과장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-07-18","2025-07-20","엄진이 전무","한솔연수원(무이리)",4,"미사용"],["봉제전략부","오영은 과장","2025-07-19","2025-07-20","오영은 과장","솔샘연수원",0,"사용"],["사업6부2팀","이종현 차장","2025-07-19","2025-07-20","이종현 차장","솔샘연수원",2,"미사용"],["사업3부2팀","정성훈 대리","2025-07-19","2025-07-20","정성훈 대리","솔샘연수원",4,"미사용"],["Pattern팀","최승구 실장","2025-07-19","2025-07-20","최승구 실장","솔샘연수원",2,"미사용"],["디자인3팀","김슬기 대리","2025-07-19","2025-07-20","김슬기 대리","솔샘연수원",2,"미사용"],["사업6부1팀","채미영 과장","2025-07-19","2025-07-20","채미영 과장","솔샘연수원",2,"미사용"],["사업2부1팀","박경엽 대리","2025-07-19","2025-07-21","박경엽 대리","평창연수원",1,"미사용"],["HR부","이지원 사원","2025-07-19","2025-07-20","이지원 사원","평창연수원",1,"미사용"],["통합원단부1팀","김연미 차장","2025-07-24","2025-07-26","김연미 차장","솔샘연수원",0,"사용"],["FitTech2팀","이혜영 차장","2025-07-24","2025-07-28","이혜영 차장","평창연수원",1,"미사용"],["생산2팀","김동권 과장","2025-07-24","2025-07-27","김동권 과장","평창연수원",1,"미사용"],["총무팀","박용진 차장","2025-07-25","2025-07-29","박용진 차장","평창연수원",1,"미사용"],["물류팀","박대준 계장","2025-07-26","2025-07-27","박대준 계장","솔샘연수원",0,"사용"],["Hanway ERP부","강석천 부장","2025-07-26","2025-07-27","강석천 부장","솔샘연수원",6,"미사용"],["Hanway ERP부","문용훈 주임","2025-07-26","2025-07-28","문용훈 주임","솔샘연수원",2,"미사용"],["사업11부","양승욱 과장","2025-07-26","2025-07-27","양승욱 과장","솔샘연수원",3,"미사용"],["임원실","회장님","2025-07-26","2025-07-27","회장님","한솔연수원(무이리)",0,"미사용"],["자금부","박원서 차장","2025-07-27","2025-07-27","박원서 차장","솔샘연수원",5,"미사용"],["생산2팀","남연우 차장","2025-07-29","2025-07-30","남연우 차장","평창연수원",1,"미사용"],["사업11부","이지연 차장","2025-07-30","2025-08-01","이지연 차장","평창연수원",1,"미사용"],["생산2팀","김동수 과장","2025-07-30","2025-08-03","김동수 과장","평창연수원",1,"미사용"],["사업3부3팀","유현숙 과장","2025-07-31","2025-08-01","유현숙 과장","솔샘연수원",3,"사용"],["IT부","이정욱 차장","2025-07-31","2025-08-02","이정욱 차장","평창연수원",1,"미사용"],["사업11부","이지연 차장","2025-08-01","2025-08-02","이지연 차장","솔샘연수원",3,"미사용"],["통합원단부3팀","박향근 차장","2025-08-01","2025-08-02","박향근 차장","솔샘연수원",2,"사용"],["생산1팀","김요한 과장","2025-08-01","2025-08-03","김요한 과장","솔샘연수원",4,"미사용"],["전략기획팀","강경모 과장","2025-08-01","2025-08-03","강경모 과장","평창연수원",1,"미사용"],["Hanway ERP부","여윤정 차장","2025-08-02","2025-08-03","여윤정 차장","솔샘연수원",0,"사용"],["Pattern팀","최승구 실장","2025-08-02","2025-08-03","최승구 실장","솔샘연수원",2,"미사용"],["재무부","신현정 과장","2025-08-02","2025-08-03","신현정 과장","솔샘연수원",4,"미사용"],["사업2부2팀","설지윤 주임","2025-08-02","2025-08-03","설지윤 주임","솔샘연수원",1,"미사용"],["CAD팀","제자연 대리","2025-08-02","2025-08-04","제자연 대리","솔샘연수원",2,"미사용"],["IT부","박한상 과장","2025-08-03","2025-08-05","박한상 과장","평창연수원",1,"미사용"],["총무팀","최광호 부장","2025-08-06","2025-08-07","최광헌(KO-STA 프로)","평창연수원",1,"미사용"],["임원실","박혜정 이사","2025-08-07","2025-08-09","박혜정 이사","한솔연수원(무이리)",2,"미사용"],["사업7부4팀","하회준 과장","2025-08-08","2025-08-10","하회준 과장","솔샘연수원",5,"미사용"],["QA부","김지영 차장","2025-08-09","2025-08-10","김지영 차장","솔샘연수원",0,"사용"],["총무팀","김연옥 차장","2025-08-09","2025-08-10","김연옥 차장","솔샘연수원",6,"미사용"],["사업2부1팀","김종엽 부장","2025-08-09","2025-08-10","김종엽 부장","솔샘연수원",2,"미사용"],["Hanway ERP부","이탁근 차장","2025-08-09","2025-08-10","이탁근 차장","평창연수원",1,"미사용"],["생산2팀","한용준 사원","2025-08-09","2025-08-10","한용준 사원","평창연수원",1,"미사용"],["자금부","박원서 차장","2025-08-09","2025-08-12","박원서 차장","평창연수원",1,"미사용"],["수출팀","이병언 부장","2025-08-09","2025-08-10","이병언 부장","한솔연수원(무이리)",4,"미사용"],["Hanway ERP부","강석천 부장","2025-08-10","2025-08-11","강석천 부장","솔샘연수원",2,"미사용"],["수출팀","신선미 차장","2025-08-10","2025-08-11","신선미 차장","솔샘연수원",0,"사용"],["총무팀","김연옥 차장","2025-08-14","2025-08-15","김연옥 차장","솔샘연수원",3,"미사용"],["정산관리팀","천명주 차장","2025-08-14","2025-08-16","천명주 차장","평창연수원",1,"미사용"],["사업11부","양승욱 과장","2025-08-14","2025-08-17","양승욱 과장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-08-14","2025-08-17","엄진이 전무","한솔연수원(무이리)",4,"미사용"],["사업2부1팀","김종엽 부장","2025-08-15","2025-08-16","김종엽 부장","솔샘연수원",4,"미사용"],["3D팀","주효정 주임","2025-08-15","2025-08-16","주효정 주임","솔샘연수원",3,"사용"],["재무부","곽준우 차장","2025-08-15","2025-08-17","곽준우 차장","솔샘연수원",4,"미사용"],["사업11부","강세명 부장","2025-08-15","2025-08-17","강세명 부장","솔샘연수원",2,"미사용"],["총무팀","전현수 과장","2025-08-15","2025-08-17","전현수 과장","평창연수원",1,"미사용"],["임원실","회장님","2025-08-16","2025-08-17","회장님","솔샘연수원",0,"미사용"],["재무부","강채윤 주임","2025-08-16","2025-08-17","강채윤 주임","솔샘연수원",1,"미사용"],["통합원단부1팀","이은하 과장","2025-08-16","2025-08-17","이은하 과장","솔샘연수원",0,"사용"],["통합원단부3팀","박향근 차장","2025-08-16","2025-08-17","박향근 차장","솔샘연수원",2,"미사용"],["사업3부2팀","허나리 과장","2025-08-16","2025-08-18","조영희(어머니)","솔샘연수원",1,"미사용"],["사업7부2팀","박혜연 차장","2025-08-17","2025-08-18","박혜연 차장","솔샘연수원",0,"사용"],["3D팀","주효정 주임","2025-08-17","2025-08-18","주효정 주임","평창연수원",1,"미사용"],["사업11부","양승욱 과장","2025-08-22","2025-08-24","양승욱 과장","솔샘연수원",3,"사용"],["전략기획팀","강경모 과장","2025-08-22","2025-08-24","강경모 과장","평창연수원",1,"미사용"],["총무팀","전현수 과장","2025-08-23","2025-08-24","김치중 변호사님","솔샘연수원",1,"미사용"],["CSR/Sustainability부","오아름 차장","2025-08-23","2025-08-24","오아름 차장","솔샘연수원",3,"미사용"],["Pattern팀","최승구 실장","2025-08-23","2025-08-24","최승구 실장","솔샘연수원",3,"미사용"],["사업6부1팀","채미영 과장","2025-08-23","2025-08-24","채미영 과장","솔샘연수원",3,"미사용"],["총무팀","최광호 부장","2025-08-23","2025-08-24","최석우(아들)","평창연수원",1,"미사용"],["임원실","최연우 이사","2025-08-23","2025-08-24","최연우 이사","평창연수원",1,"미사용"],["재무부","신현정 과장","2025-08-24","2025-08-25","신현정 과장","솔샘연수원",2,"미사용"],["임원실","김재호 이사","2025-08-24","2025-08-26","김재호 이사","한솔연수원(무이리)",4,"미사용"],["사업4부1팀","강선아 과장","2025-08-29","2025-08-30","강선아 과장","솔샘연수원",0,"사용"],["사업4부1팀","임아림 과장","2025-08-30","2025-08-31","임아림 과장","솔샘연수원",2,"미사용"],["사업4부2팀","최신우 차장","2025-08-30","2025-08-31","최신우 차장","솔샘연수원",0,"사용"],["사업6부1팀","맹재영 과장","2025-08-30","2025-08-31","맹재영 과장","솔샘연수원",2,"미사용"],["생산2팀","김동수 과장","2025-08-30","2025-08-31","김동수 과장","솔샘연수원",5,"미사용"],["사업4부1팀","안윤정 과장","2025-08-30","2025-08-31","안윤정 과장","솔샘연수원",4,"미사용"],["3D팀","홍민서 사원","2025-09-05","2025-09-08","홍민서 사원","솔샘연수원",1,"미사용"],["사업3부4팀","김영덕 차장","2025-09-06","2025-09-07","김영덕 차장","솔샘연수원",2,"사용"],["사업11부","강세명 부장","2025-09-06","2025-09-07","강세명 부장","솔샘연수원",6,"미사용"],["사업2부2팀","윤지연 차장","2025-09-06","2025-09-07","윤지연 차장","솔샘연수원",3,"미사용"],["임원실","회장님","2025-09-06","2025-09-07","회장님","솔샘연수원",0,"미사용"],["사업1부2팀","윤진이 부장","2025-09-12","2025-09-14","권선복(어머니)","솔샘연수원",3,"미사용"],["총무팀","박용진 차장","2025-09-13","2025-09-14","박용진 차장","솔샘연수원",5,"미사용"],["사업11부","이지연 차장","2025-09-13","2025-09-14","이지연 차장","솔샘연수원",0,"사용"],["총무팀","김연옥 차장","2025-09-13","2025-09-14","김연옥 차장","솔샘연수원",5,"미사용"],["임원실","회장님","2025-09-13","2025-09-14","회장님","한솔연수원(무이리)",0,"미사용"],["재무부","임지은 차장","2025-09-19","2025-09-21","임지은 차장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-09-19","2025-09-21","엄진이 전무","한솔연수원(무이리)",4,"미사용"],["사업6부1팀","채미영 과장","2025-09-20","2025-09-21","채미영 과장","솔샘연수원",1,"사용"],["총무팀","나영선 실장","2025-09-20","2025-09-21","나영선 실장","솔샘연수원",4,"미사용"],["사업7부1팀","장정윤 부장","2025-09-20","2025-09-21","장정윤 부장","솔샘연수원",3,"미사용"],["Pattern팀","최승구 실장","2025-09-20","2025-09-21","최승구 실장","솔샘연수원",2,"미사용"],["물류팀","이강우 계장","2025-09-20","2025-09-21","이강우 계장","솔샘연수원",2,"미사용"],["Hanway ERP부","강석천 부장","2025-09-21","2025-09-22","강석천 부장","솔샘연수원",5,"미사용"],["임원실","김재호 이사","2025-09-26","2025-09-27","이건숙(배우자)","솔샘연수원",1,"미사용"],["임원실","유영균 이사","2025-09-26","2025-09-28","유영균 이사","솔샘연수원",3,"사용"],["사업3부4팀","김영덕 차장","2025-09-27","2025-09-28","김영덕 차장","솔샘연수원",3,"미사용"],["Pattern팀","최승구 실장","2025-09-27","2025-09-28","최승구 실장","솔샘연수원",1,"미사용"],["임원실","엄진이 전무","2025-10-02","2025-10-04","엄진이 전무","한솔연수원(무이리)",2,"미사용"],["사업3부2팀","허나리 과장","2025-10-03","2025-10-04","허나리 과장","솔샘연수원",3,"사용"],["통합원단부3팀","박향근 차장","2025-10-03","2025-10-05","박향근 차장","솔샘연수원",3,"미사용"],["총무팀","김연옥 차장","2025-10-03","2025-10-05","김귀남(동생)","솔샘연수원",2,"미사용"],["부자재구매부","강효철 과장","2025-10-03","2025-10-05","강효철 과장","솔샘연수원",1,"미사용"],["원사구매팀","민경진 차장","2025-10-03","2025-10-05","민경진 차장","솔샘연수원",2,"미사용"],["사업3부4팀","김영덕 차장","2025-10-03","2025-10-05","김영덕 차장","솔샘연수원",2,"미사용"],["CSR/Sustainability부","조아라 사원","2025-10-03","2025-10-07","조아라 사원","평창연수원",1,"미사용"],["생산2팀","김동수 과장","2025-10-03","2025-10-08","김동수 과장","평창연수원",1,"미사용"],["임원실","회장님","2025-10-05","2025-10-07","회장님","한솔연수원(무이리)",0,"미사용"],["생산2팀","김동권 과장","2025-10-07","2025-10-11","김동권 과장","평창연수원",1,"미사용"],["생산1팀","유택규 과장","2025-10-07","2025-10-12","유택규 과장","평창연수원",1,"미사용"],["디자인2팀","박지영 차장","2025-10-08","2025-10-09","박지영 차장","솔샘연수원",3,"미사용"],["통합원단부1팀","김연미 차장","2025-10-08","2025-10-09","김연미 차장","솔샘연수원",2,"미사용"],["Hanway ERP부","이탁근 차장","2025-10-08","2025-10-09","이탁근 차장","솔샘연수원",3,"미사용"],["디자인2팀","박지영 차장","2025-10-08","2025-10-10","박지영 차장","솔샘연수원",0,"사용"],["임원실","엄진이 전무","2025-10-08","2025-10-09","엄진이 전무","솔샘연수원",4,"미사용"],["임원실","엄진이 전무","2025-10-09","2025-10-10","엄진이 전무","솔샘연수원",1,"미사용"],["디자인2팀","박지영 차장","2025-10-09","2025-10-10","박지영 차장","솔샘연수원",2,"미사용"],["총무팀","박용진 차장","2025-10-09","2025-10-12","박용진 차장","평창연수원",1,"미사용"],["총무팀","김연옥 차장","2025-10-10","2025-10-11","김연옥 차장","솔샘연수원",2,"미사용"],["사업2부1팀","윤광열 차장","2025-10-10","2025-10-11","윤광열 차장","솔샘연수원",0,"사용"],["임원실","최세호 이사","2025-10-10","2025-10-12","최세호 이사","한솔연수원(무이리)",4,"미사용"],["총무팀","이해랑 차장","2025-10-11","2025-10-12","이해랑 차장","솔샘연수원",4,"사용"],["사업7부4팀","하회준 과장","2025-10-11","2025-10-12","하회준 과장","솔샘연수원",4,"미사용"],["임원실","회장님","2025-10-11","2025-10-12","회장님","솔샘연수원",0,"미사용"],["임원실","엄진이 전무","2025-10-16","2025-10-18","엄경미(여동생)","솔샘연수원",1,"미사용"],["3D팀","홍민서 사원","2025-10-17","2025-10-20","정소영(어머니)","솔샘연수원",1,"미사용"],["임원실","김재춘 감사","2025-10-18","2025-10-20","김재춘 감사","평창연수원",1,"미사용"],["임원실","김맹호 상무","2025-10-22","2025-10-23","이석우 님\n(前 남양주 시장)","솔샘연수원",4,"사용"],["사업4부3팀","정재선 차장","2025-10-23","2025-10-24","정재선 차장","솔샘연수원",10,"사용"],["OBM부","곽지범 주임","2025-10-24","2025-10-25","곽지범 주임","솔샘연수원",4,"사용"],["CSR/Sustainability부","오아름 차장","2025-10-25","2025-10-26","오아름 차장","솔샘연수원",4,"미사용"],["재무부","곽준우 차장","2025-10-25","2025-10-26","곽준우 차장","솔샘연수원",1,"사용"],["총무팀","이진우 소장","2025-10-25","2025-10-26","이진우 소장","솔샘연수원",5,"미사용"],["통합원단부3팀","박향근 차장","2025-10-25","2025-10-26","김신자(어머니)","솔샘연수원",2,"미사용"],["생산2팀","김동수 과장","2025-10-31","2025-11-01","정외조(어머니)","솔샘연수원",3,"미사용"],["임원실","엄진이 전무","2025-10-31","2025-11-01","엄진이 전무","솔샘연수원",0,"사용"],["HR부","이종현 부장","2025-10-31","2025-11-02","이종현 부장","한솔연수원(무이리)",4,"미사용"],["사업6부2팀","이종현 차장","2025-11-01","2025-11-02","이종현 차장","솔샘연수원",3,"미사용"],["Hanway ERP부","김재영 과장","2025-11-01","2025-11-02","김재영 과장","솔샘연수원",1,"사용"],["Pattern팀","최승구 실장","2025-11-01","2025-11-02","최승구 실장","솔샘연수원",1,"미사용"],["재무부","박형철 대리","2025-11-01","2025-11-02","박형철 대리","솔샘연수원",1,"미사용"],["임원실","회장님","2025-11-04","2025-11-05","회장님 사모님","한솔연수원(무이리)",0,"미사용"],["사업4부2팀","김정제 과장","2025-11-06","2025-11-07","김정제 과장","솔샘연수원",8,"사용"],["사업6부2팀","이종현 차장","2025-11-08","2025-11-09","이종현 차장","솔샘연수원",3,"미사용"],["사업6부1팀","채미영 과장","2025-11-08","2025-11-09","채미영 과장","솔샘연수원",3,"미사용"],["임원실","회장님","2025-11-08","2025-11-09","회장님","솔샘연수원",3,"사용"],["사업7부2팀","박혜연 차장","2025-11-14","2025-11-15","이정혜(어머니)","솔샘연수원",1,"미사용"],["사업11부","양승욱 과장","2025-11-14","2025-11-16","양승욱 과장","솔샘연수원",5,"미사용"],["Pattern팀","최승구 실장","2025-11-14","2025-11-16","최승구 실장","솔샘연수원",2,"미사용"],["생산2팀","이진기 과장","2025-11-14","2025-11-16","이진기 과장","평창연수원",1,"미사용"],["임원실","엄진이 전무","2025-11-14","2025-11-16","엄진이 전무","한솔연수원(무이리)",2,"미사용"],["사업3부2팀","양화경 차장","2025-11-15","2025-11-16","양화경 차장","솔샘연수원",0,"사용"],["임원실","회장님","2025-11-15","2025-11-16","회장님","솔샘연수원",0,"미사용"],["사업4부3팀","김진웅 사원","2025-11-15","2025-11-16","김진웅 사원","솔샘연수원",1,"미사용"],["사업11부","강세명 부장","2025-11-15","2025-11-16","강세명 부장","솔샘연수원",4,"미사용"],["재무부","신남진 부장","2025-11-15","2025-11-16","신남진 부장","평창연수원",1,"미사용"],["사업7부1팀","함영국 차장","2025-11-15","2025-11-16","함영국 차장","평창연수원",1,"미사용"],["임원실","유영균 이사","2025-11-21","2025-11-22","임원실","솔샘연수원",5,"사용"],["재무부","이범석 과장","2025-11-22","2025-11-23","이범석 과장","솔샘연수원",4,"미사용"],["총무팀","박용진 차장","2025-11-22","2025-11-23","박용진 차장","솔샘연수원",4,"미사용"],["TFM","김보미 차장","2025-11-22","2025-11-23","김보미 차장","솔샘연수원",5,"미사용"],["사업2부1팀","박경엽 대리","2025-11-22","2025-11-23","함영국 차장","평창연수원",1,"미사용"],["사업6부1팀","맹재영 과장","2025-11-23","2025-11-24","맹재영 과장","솔샘연수원",1,"미사용"],["수출팀","이병언 부장","2025-11-28","2025-11-29","이병언 부장","솔샘연수원",13,"사용"],["사업3부4팀","염유섭 차장","2025-11-28","2025-12-01","염유섭 차장","평창연수원",1,"미사용"],["사업4부1팀","임아림 과장","2025-11-29","2025-11-30","임아림 과장","솔샘연수원",2,"미사용"],["사업3부3팀","유현숙 과장","2025-11-29","2025-11-30","유현숙 과장","솔샘연수원",5,"미사용"],["사업2부1팀","윤광열 차장","2025-11-29","2025-11-30","윤광열 차장","솔샘연수원",1,"미사용"],["총무팀","전현수 과장","2025-11-29","2025-11-30","이양재 교수님","솔샘연수원",0,"미사용"],["전략기획팀","강경모 과장","2025-11-29","2025-11-30","강경모 과장","평창연수원",1,"미사용"],["사업10부3팀","최혜민 차장","2025-12-04","2025-12-05","최혜민 차장","솔샘연수원",4,"사용"],["임원실","회장님","2025-12-04","2025-12-05","회장님","한솔연수원(무이리)",4,"미사용"],["3D팀","홍민서 사원","2025-12-05","2025-12-08","홍민서 사원","솔샘연수원",2,"미사용"],["사업6부2팀","이종현 차장","2025-12-05","2025-12-06","이종현 차장","솔샘연수원",2,"미사용"],["3D팀","박미령 주임","2025-12-05","2025-12-07","박미령 주임","평창연수원",1,"미사용"],["생산1팀","유택규 과장","2025-12-06","2025-12-07","유택규 과장","솔샘연수원",0,"사용"],["Pattern팀","최승구 실장","2025-12-06","2025-12-07","최승구 실장","솔샘연수원",1,"미사용"],["OBM부","곽지범 주임","2025-12-06","2025-12-07","곽지범 주임","솔샘연수원",1,"미사용"],["사업10부2팀","정성윤 차장","2025-12-12","2025-12-13","정성윤 차장","솔샘연수원",13,"사용"],["3D팀","박미령 주임","2025-12-12","2025-12-14","박미령 주임","평창연수원",1,"미사용"],["임원실","회장님","2025-12-12","2025-12-13","회장님","한솔연수원(무이리)",4,"미사용"],["사업3부2팀","김영주 차장","2025-12-13","2025-12-14","김영주 차장","솔샘연수원",0,"사용"],["CAD팀","윤선아 부장","2025-12-13","2025-12-14","윤선아 부장","솔샘연수원",2,"미사용"],["해외재무부","류인표 부장","2025-12-13","2025-12-14","류인표 부장","평창연수원",1,"미사용"],["임원실","회장님","2025-12-16","2025-12-17","회장님","한솔연수원(무이리)",4,"미사용"],["생산1팀","김요한 과장","2025-12-19","2025-12-20","김요한 과장","솔샘연수원",2,"미사용"],["해외재무부","금강산 과장","2025-12-19","2025-12-21","금강산 과장","평창연수원",1,"미사용"],["재무부","임지은 차장","2025-12-19","2025-12-21","임지은 차장","평창연수원",1,"미사용"],["임원실","회장님","2025-12-19","2025-12-20","회장님","한솔연수원(무이리)",4,"미사용"],["사업11부","강세명 부장","2025-12-20","2025-12-21","강세명 부장","솔샘연수원",6,"미사용"],["Hanway ERP부","김재영 과장","2025-12-20","2025-12-21","김재영 과장","솔샘연수원",3,"미사용"],["사업4부3팀","이지윤 주임","2025-12-20","2025-12-21","이지윤 주임","솔샘연수원",4,"미사용"],["임원실","회장님","2025-12-20","2025-12-21","회장님","솔샘연수원",0,"미사용"],["원사구매팀","민경진 차장","2025-12-20","2025-12-21","민경진 차장","솔샘연수원",0,"사용"],["사업3부4팀","염유섭 차장","2025-12-24","2025-12-28","염유섭 차장","평창연수원",1,"미사용"],["자금부","박원서 차장","2025-12-24","2025-12-27","박원서 차장","평창연수원",1,"미사용"],["재무부","신현정 과장","2025-12-25","2025-12-26","신현정 과장","솔샘연수원",3,"미사용"],["전략기획팀","강경모 과장","2025-12-25","2025-12-28","강경모 과장","평창연수원",1,"미사용"],["재무부","신현정 과장","2025-12-26","2025-12-27","신현정 과장","솔샘연수원",2,"미사용"],["생산2팀","김동수 과장","2025-12-26","2025-12-27","김동수 과장","솔샘연수원",3,"미사용"],["총무팀","최광호 부장","2025-12-26","2025-12-27","최광호 부장","솔샘연수원",1,"사용"],["물류팀","박대준 계장","2025-12-27","2025-12-28","박대준 계장","솔샘연수원",5,"미사용"],["물류팀","이강우 계장","2025-12-27","2025-12-28","이강우 계장","솔샘연수원",0,"사용"],["Pattern팀","최승구 실장","2025-12-27","2025-12-28","최승구 실장","솔샘연수원",1,"미사용"],["사업4부1팀","손해은 대리","2025-12-27","2025-12-28","손해은 대리","평창연수원",1,"미사용"],["IT부","윤정호 차장","2025-12-31","2026-01-01","윤정호 차장","솔샘연수원",0,"사용"],["임원실","강진숙 이사","2025-12-31","2026-01-04","강진숙 이사","평창연수원",1,"미사용"],["통합원단부2팀","김요한 과장","2025-12-31","2026-01-02","김요한 과장","평창연수원",1,"미사용"],["사업3부4팀","염유섭 차장","2025-12-31","2026-01-04","염유섭 차장","평창연수원",1,"미사용"],["사업7부2팀","박혜연 차장","2026-01-01","2026-01-02","박혜연 차장","솔샘연수원",0,"사용"],["임원실","회장님","2026-01-02","2026-01-04","회장님","한솔연수원(무이리)",4,"미사용"],["임원실","유영균 이사","2026-01-03","2026-01-04","유영균 이사","솔샘연수원",1,"사용"],["IT부","박한상 과장","2026-01-04","2026-01-07","박한상 과장","평창연수원",1,"미사용"],["총무팀","박용진 차장","2026-01-08","2026-01-11","박용진 차장","평창연수원",1,"미사용"],["사업6부2팀","이종현 차장","2026-01-09","2026-01-10","이종현 차장","솔샘연수원",0,"사용"],["HR부","이종현 부장","2026-01-09","2026-01-11","이종현 부장","솔샘연수원",6,"미사용"],["3D팀","홍민서 사원","2026-01-09","2026-01-11","정호균(삼촌)","솔샘연수원",1,"미사용"],["Hanway ERP부","이탁근 차장","2026-01-09","2026-01-12","이탁근 차장","평창연수원",1,"미사용"],["임원실","회장님","2026-01-09","2026-01-12","회장님","한솔연수원(무이리)",4,"미사용"],["Hanway ERP부","강석천 부장","2026-01-10","2026-01-11","강석천 부장","솔샘연수원",0,"사용"],["재무부","이범석 과장","2026-01-10","2026-01-11","이범석 과장","솔샘연수원",4,"미사용"],["자금부","박원서 차장","2026-01-11","2026-01-12","박원서 차장","솔샘연수원",5,"미사용"],["임원실","엄진이 전무","2026-01-16","2026-01-17","최혜정(조카)","솔샘연수원",0,"사용"],["사업2부2팀","박헌식 대리","2026-01-16","2026-01-18","박헌식 대리","평창연수원",1,"미사용"],["임원실","엄진이 전무","2026-01-16","2026-01-18","엄진이 전무","한솔연수원(무이리)",3,"미사용"],["CAD팀","제자연 대리","2026-01-17","2026-01-18","제자연 대리","솔샘연수원",0,"사용"],["총무팀","이진우 소장","2026-01-17","2026-01-18","이진우 소장","솔샘연수원",3,"미사용"],["사업6부1팀","맹재영 과장","2026-01-17","2026-01-18","맹재영 과장","솔샘연수원",2,"미사용"],["3D팀","주효정 주임","2026-01-17","2026-01-18","주효정 주임","솔샘연수원",2,"미사용"],["사업6부1팀","채미영 과장","2026-01-17","2026-01-18","채미영 과장","솔샘연수원",4,"미사용"],["3D팀","박미령 주임","2026-01-17","2026-01-19","박미령 주임","솔샘연수원",1,"미사용"],["총무팀","김연옥 차장","2026-01-23","2026-01-24","주영종(배우자)","솔샘연수원",6,"미사용"],["임원실","김재호 이사","2026-01-23","2026-01-25","김나영(자녀)","평창연수원",1,"미사용"],["생산2팀","김동권 과장","2026-01-23","2026-01-26","김동권 과장","평창연수원",1,"미사용"],["재무부","곽준우 차장","2026-01-24","2026-01-25","곽준우 차장","솔샘연수원",2,"사용"],["사업3부3팀","서은주 대리","2026-01-24","2026-01-25","서은주 대리","평창연수원",1,"미사용"],["생산2팀","김동수 과장","2026-01-30","2026-02-01","김동수 과장","평창연수원",1,"미사용"],["생산2팀","유택규 과장","2026-01-30","2026-02-01","유택규 과장","평창연수원",1,"미사용"],["총무팀","김연옥 차장","2026-01-31","2026-02-01","김연옥 차장","솔샘연수원",4,"사용"],["임원실","회장님","2026-01-31","2026-02-01","회장님","솔샘연수원",0,"미사용"],["Hanway ERP부","여윤정 차장","2026-01-31","2026-02-01","여윤정 차장","솔샘연수원",4,"미사용"],["부자재구매부","윤현섭 차장","2026-01-31","2026-02-01","김하형(배우자)","솔샘연수원",2,"미사용"],["생산2팀","김동권 과장","2026-01-31","2026-02-01","김동권 과장","솔샘연수원",3,"미사용"],["생산1팀","김요한 과장","2026-01-31","2026-02-01","김요한 과장","평창연수원",1,"미사용"],["총무팀","최광호 부장","2026-02-02","2026-02-03","배호성 프로(Ko-STA)","평창연수원",1,"미사용"],["총무팀","최광호 부장","2026-02-06","2026-02-08","최석우(아들)","평창연수원",1,"미사용"],["통합원단부1팀","이은하 과장","2026-02-07","2026-02-08","이은하 과장","솔샘연수원",5,"미사용"],["3D팀","홍민서 사원","2026-02-07","2026-02-08","홍민서 사원","솔샘연수원",0,"사용"],["통합원단부3팀","박향근 차장","2026-02-07","2026-02-08","박향근 차장","솔샘연수원",3,"미사용"],["사업6부2팀","이아름 과장","2026-02-07","2026-02-08","이아름 과장","솔샘연수원",3,"미사용"],["사업11부","강세명 부장","2026-02-07","2026-02-08","강세명 부장","솔샘연수원",2,"미사용"],["통합원단부1팀","조서현 사원","2026-02-08","2026-02-09","조서현 사원","평창연수원",1,"미사용"],["총무팀","최광호 부장","2026-02-09","2026-02-12","주현식 코치(Ko-STA)","평창연수원",1,"미사용"],["부자재구매부","윤현섭 차장","2026-02-13","2026-02-14","윤현섭 차장","솔샘연수원",1,"사용"],["HR부","이종현 부장","2026-02-13","2026-02-17","이종현 부장","평창연수원",1,"미사용"],["총무팀","전현수 과장","2026-02-14","2026-02-15","전현수 과장","솔샘연수원",0,"사용"],["CSR/Sustainability부","조아라 사원","2026-02-14","2026-02-16","조아라 사원","솔샘연수원",1,"미사용"],["3D팀","주효정 주임","2026-02-14","2026-02-16","주효정 주임","평창연수원",1,"미사용"],["IT부","윤정수 부장","2026-02-14","2026-02-16","윤정수 부장","평창연수원",1,"미사용"],["IT부","신대용 과장","2026-02-15","2026-02-16","신대용 과장","솔샘연수원",0,"사용"],["부자재구매부","강효철 과장","2026-02-15","2026-02-16","강대진(부)","솔샘연수원",3,"미사용"],["사업10부1팀","최우정 대리","2026-02-20","2026-02-21","최우정 대리","솔샘연수원",1,"사용"],["사업3부3팀","서은주 대리","2026-02-20","2026-02-22","서은주 대리","평창연수원",1,"미사용"],["사업6부1팀","채미영 과장","2026-02-21","2026-02-22","채미영 과장","솔샘연수원",0,"사용"],["생산1팀","김요한 과장","2026-02-27","2026-03-03","김요한 과장","평창연수원",1,"미사용"],["사업3부4팀","김영덕 차장","2026-02-28","2026-03-01","김영덕 차장","솔샘연수원",3,"미사용"],["재무부","박지혜 주임","2026-02-28","2026-03-01","박지혜 주임","솔샘연수원",1,"사용"],["통합원단부1팀","이은하 과장","2026-02-28","2026-03-02","곽수민(모)","솔샘연수원",1,"미사용"],["Hanway ERP부","이탁근 차장","2026-02-28","2026-03-02","이탁근 차장","평창연수원",1,"미사용"],["사업3부4팀","염유섭 차장","2026-02-28","2026-03-04","염유섭 차장","평창연수원",1,"미사용"],["생산1팀","유택규 과장","2026-03-06","2026-03-09","유택규 과장","평창연수원",1,"미사용"],["임원실","회장님","2026-03-07","2026-03-08","회장님","솔샘연수원",0,"미사용"],["재무부","신현정 과장","2026-03-01","2026-03-02","신현정 과장","소노리조트(구 대명리조트)(단양)",1,"미사용"],["총무팀","전현수 과장","2026-03-11","2026-03-13","이양재 교수님","솔샘연수원",0,"미사용"],["디자인2팀","박지영 차장","2026-03-13","2026-03-14","박지영 차장","솔샘연수원",0,"사용"],["사업6부2팀","이아름 과장","2026-03-14","2026-03-15","이아름 과장","솔샘연수원",1,"사용"],["수출팀","신선미 차장","2026-03-21","2026-03-22","신선미 차장","솔샘연수원",0,"사용"],["OBM부","유덕영 주임","2026-03-21","2026-03-22","유덕영 주임","솔샘연수원",1,"미사용"],["사업6부1팀","채미영 과장","2026-03-21","2026-03-22","채미영 과장","솔샘연수원",3,"미사용"],["재무부","곽준우 차장","2026-03-21","2026-03-22","곽준우 차장","솔샘연수원",4,"미사용"],["사업6부1팀","채미영 과장","2026-03-27","2026-03-28","최연호(배우자)","솔샘연수원",1,"미사용"],["총무팀","박용진 차장","2026-03-27","2026-03-29","박용진 차장","솔샘연수원",2,"사용"],["Hanway ERP부","김재영 과장","2026-03-28","2026-03-29","김재영 과장","솔샘연수원",5,"미사용"],["총무팀","전요진 사원","2026-03-28","2026-03-29","전요진 사원","솔샘연수원",3,"미사용"],["Pattern팀","최승구 실장","2026-04-03","2026-04-04","최승구 실장","솔샘연수원",1,"사용"],["총무팀","김연옥 차장","2026-04-11","2026-04-12","김연옥 차장","솔샘연수원",6,"미사용"],["사업10부2팀","이수진 대리","2026-04-18","2026-04-19","이수진 대리","솔샘연수원",1,"사용"],["Pattern팀","최승구 실장","2026-04-18","2026-04-19","최승구 실장","솔샘연수원",2,"미사용"],["IT부","신대용 과장","2026-04-18","2026-04-21","신대용 과장","소노리조트(구 대명리조트)(제주)",1,"미사용"],["재무부","신남진 부장","2026-04-25","2026-04-26","신남진 부장","솔샘연수원",3,"미사용"],["사업4부1팀","안나영 주임","2026-04-25","2026-04-26","안나영 주임","솔샘연수원",0,"사용"]];
+
+/* 중복 판별 키: 부서+시작+종료+지역 */
+function rowKey(r){ return r.부서+'|'+r.시작+'|'+r.종료+'|'+r.지역; }
+
+/* ══ 객실 수 & 점유율 설정 ══ */
+const ROOM_CAPACITY = {
+  "솔샘연수원":  { total: 13, vip: 1 },   /* 일반 12 + VIP 1 */
+  "평창연수원":  { total: 3,  vip: 0 },
+  "한솔연수원":  { total: 1,  vip: 0 },
+  /* 소노·켄싱턴은 unlimited → capacity 미정의 시 점유율 표시 안 함 */
+};
+/* 점유율 = (해당 월 사용 room-nights) / (총 객실 × 해당 월 일수) */
+function calcOccupancy(grp, monthRows, year, month){
+  const cap = ROOM_CAPACITY[grp];
+  if(!cap) return null;
+  const dim = new Date(year, month+1, 0).getDate();
+  const mk = `${year}-${String(month+1).padStart(2,"0")}`;
+  let roomNights = 0;
+  monthRows.forEach(r => {
+    if(r.그룹 !== grp) return;
+    /* 해당 월 내 겹치는 날수 계산 */
+    const mStart = mk + "-01";
+    const mEnd   = mk + "-" + String(dim).padStart(2,"0");
+    const s = r.시작 > mStart ? r.시작 : mStart;
+    const e = r.종료 <= mEnd  ? r.종료 : addDay(mEnd);
+    const days = Math.max(0, Math.round((new Date(e) - new Date(s)) / 86400000));
+    roomNights += (r.방수||1) * days;
+  });
+  const available = cap.total * dim;
+  return available > 0 ? Math.round(roomNights / available * 100) : 0;
+}
+
+/* ══ 시설 그룹 정의 (필터·통계·달력 바·범례에 사용) ══ */
+const LOCATION_GROUPS = {
+  "솔샘연수원":  { label:"솔샘연수원",  color:"#D97706", light:"#FEF3C7" },
+  "평창연수원":  { label:"평창연수원",  color:"#1D6FA4", light:"#D6EAF8" },
+  "한솔연수원":  { label:"한솔연수원",  color:"#16A34A", light:"#DCFCE7" },
+  "소노리조트":  { label:"소노리조트",  color:"#DC2626", light:"#FEE2E2" },
+  "켄싱턴리조트":{ label:"켄싱턴리조트",color:"#7C3AED", light:"#EDE9FE" },
+};
+
+/* CSV 원본 지역명 → 그룹명으로 정규화 */
+function getGroup(지역) {
+  if (지역.includes("솔샘"))  return "솔샘연수원";
+  if (지역.includes("평창"))  return "평창연수원";
+  if (지역.includes("한솔"))  return "한솔연수원";
+  if (지역.includes("소노") || 지역.includes("대명")) return "소노리조트";
+  if (지역.includes("켄싱턴")) return "켄싱턴리조트";
+  return 지역; // 매핑 안 되면 원본 그대로
+}
+
+const WEEK   = ["일","월","화","수","목","금","토"];
+const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+
+/* ══ STATE ══ */
+let DATA=[], LOCS={};
+let curYear=new Date().getFullYear(), curMonth=new Date().getMonth();
+let selDay=null, filterLoc=null, csvFN=CSV_FILE;
+
+const TODAY=(()=>{const d=new Date();return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;})();
+function p(n){return String(n).padStart(2,"0");}
+function dk(y,m,d){return `${y}-${p(m+1)}-${p(d)}`;}
+function addDay(ds,n=1){const d=new Date(ds+"T00:00:00");d.setDate(d.getDate()+n);return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
+function diffDays(s,e){return Math.round((new Date(e)-new Date(s))/86400000);}
+function getLoc(grp){return LOCATION_GROUPS[grp]||{label:grp,color:"#888",light:"#F0F0F0"};}
+function getF(){return filterLoc?DATA.filter(r=>r.그룹===filterLoc):DATA;}
+function forDay(y,m,d){const ds=dk(y,m,d);return getF().filter(r=>ds>=r.시작&&ds<r.종료);}
+
+/* ══ CSV ══ */
+function reloadCSV(){loadCSV(csvFN);}
+function loadCSV(fn){
+  document.getElementById("ld-sub").textContent=`${fn} 파일을 읽고 있어요`;
+  document.getElementById("ld").classList.remove("off");
+  document.getElementById("er").classList.add("off");
+  document.getElementById("app").classList.remove("on");
+  // ★ 캐시 무력화: 타임스탬프 파라미터 추가 (? 또는 & 자동 판단)
+  const cacheBust = fn + (fn.includes("?") ? "&" : "?") + "t=" + Date.now();
+  Papa.parse(cacheBust,{download:true,header:true,skipEmptyLines:true,encoding:"UTF-8",
+    complete:r=>{if(r.errors.length&&!r.data.length)showErr();else procData(r.data);},
+    error:()=>showErr()});
+}
+function handleUpload(e){
+  const f=e.target.files[0];if(!f)return;
+  csvFN=f.name;
+  document.getElementById("ld-sub").textContent=`${f.name} 파일을 읽고 있어요`;
+  document.getElementById("ld").classList.remove("off");
+  document.getElementById("er").classList.add("off");
+  Papa.parse(f,{header:true,skipEmptyLines:true,encoding:"UTF-8",
+    complete:r=>procData(r.data),error:()=>showErr()});
+}
+
+function buildRow_sheet(row, i, warns){
+  const r={};
+  Object.entries(COL_MAP).forEach(([c,k])=>{r[k]=(row[c]||"").trim();});
+  r.시작=r.시작.replace(/\./g,"-").replace(/-([0-9])(?=-|$)/g,"-0$1");
+  r.종료=r.종료.replace(/\./g,"-").replace(/-([0-9])(?=-|$)/g,"-0$1");
+  r.방수=parseInt(r.방수)||0;
+  if(!r.시작||!r.종료||!r.지역){warns.push((i+2)+"행 누락");return null;}
+  r.그룹=getGroup(r.지역); r.src="sheet";
+  return r;
+}
+function buildRow_backup(a){
+  const r={부서:a[0],신청자:a[1],시작:a[2],종료:a[3],사용자:a[4],지역:a[5],방수:a[6],vip:a[7],목적:a[8]||"",호실:a[9]||""};
+  if(!r.시작||!r.종료||!r.지역) return null;
+  r.그룹=getGroup(r.지역); r.src="backup";
+  return r;
+}
+function buildLOCS(){
+  LOCS={};
+  const used=new Set(DATA.map(r=>r.그룹));
+  Object.entries(LOCATION_GROUPS).forEach(([k,v])=>{ if(used.has(k)) LOCS[k]=v; });
+  const ex=[{color:"#B45309",light:"#FEF0DC"},{color:"#166534",light:"#DCFCE7"},
+             {color:"#7E22CE",light:"#F3E8FF"},{color:"#9D174D",light:"#FFF1F2"}];
+  let ei=0;
+  DATA.forEach(r=>{ if(!LOCS[r.그룹]){LOCS[r.그룹]={label:r.그룹,...ex[ei++%4]};} });
+}
+function procData(sheetRows){
+  DATA=[]; let warns=[];
+  /* 구글시트 파싱 */
+  const sheetData=[];
+  sheetRows.forEach((row,i)=>{ const r=buildRow_sheet(row,i,warns); if(r) sheetData.push(r); });
+  const sheetKeys=new Set(sheetData.map(rowKey));
+  /* 백업 데이터 파싱 — 구글시트에 없는 것만 추가 */
+  const backupData=[];
+  BACKUP_RAW.forEach(a=>{ const r=buildRow_backup(a); if(r&&!sheetKeys.has(rowKey(r))) backupData.push(r); });
+  /* 병합 후 날짜 오름차순 정렬 */
+  DATA=[...sheetData,...backupData];
+  DATA.sort((a,b)=>a.시작.localeCompare(b.시작));
+  window._cnt={sheet:sheetData.length, backup:backupData.length};
+  buildLOCS();
+  initApp(warns);
+}
+
+/* ══ INIT ══ */
+function initApp(warns){
+  const ld=document.getElementById("ld");
+  ld.style.opacity="0";ld.style.transition="opacity .4s";
+  setTimeout(()=>{ld.classList.add("off");ld.style.opacity="1";},420);
+  document.getElementById("app").classList.add("on");
+  const t=new Date();
+  // 날짜는 초기 진입 시에만 오늘로 세팅, 새로고침 시에는 유지
+  if(curYear===new Date().getFullYear()&&curMonth===new Date().getMonth()||!document.getElementById("cal-title").textContent){
+    curYear=t.getFullYear();curMonth=t.getMonth();
+  }
+  selDay=null;
+  // 헤더 — 마지막 로드 시각 표시
+  const timeStr=`${t.getHours()}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
+  const _c=window._cnt||{sheet:0,backup:0};
+  document.getElementById("hmeta").textContent=`최종 로드 ${timeStr} · 총 ${DATA.length}건 (실시간 ${_c.sheet} + 백업 ${_c.backup})`;
+  // 새로고침 버튼 완료 피드백
+  const btn=document.getElementById("reload-btn");
+  if(btn){btn.textContent="✅ 업데이트됨";setTimeout(()=>{btn.innerHTML='🔄 <span class="rtxt">데이터 새로고침</span>';},2000);}
+  const sb=document.getElementById("csvst");
+  if(warns.length){sb.className="csv-st warn";sb.textContent=`⚠️ ${warns.length}행 오류: ${warns.slice(0,2).join(", ")}`;sb.classList.remove("off");}
+  else{
+    const _c2=window._cnt||{sheet:0,backup:0};
+    sb.className="csv-st";
+    sb.textContent=`✅ 총 ${DATA.length}건 — 구글시트 ${_c2.sheet}건 + 백업 ${_c2.backup}건 · ${timeStr} 기준`;
+    sb.classList.remove("off");
+    setTimeout(()=>sb.classList.add("off"),6000);
+  }
+  renderLgd();renderFilter();renderStats();renderCal();resetDet();
+}
+
+/* ══ STATS ══ */
+function renderStats(){
+  const mk=`${curYear}-${p(curMonth+1)}`;
+  const inM=r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31");
+  const all=DATA.filter(inM);
+  let h=`<div class="stat-card"><div class="stat-label">이번 달 전체</div><div class="stat-value" style="color:#E2E8F0">${all.length}<span class="stat-unit">건</span></div></div>`;
+  Object.entries(LOCS).forEach(([grp,loc])=>{
+    const cnt=all.filter(r=>r.그룹===grp).length;
+    if(cnt===0)return;
+    const occ = calcOccupancy(grp, all, curYear, curMonth);
+    const cap = ROOM_CAPACITY[grp];
+    let occHtml = "";
+    if(occ !== null){
+      const fillColor = occ>=80?"#F87171":occ>=50?"#FCD34D":loc.light;
+      const roomLabel = cap.vip>0 ? `총 ${cap.total}실 (VIP ${cap.vip}실)` : `총 ${cap.total}실`;
+      occHtml = `<div class="stat-occ">점유율 <strong style="color:${fillColor}">${occ}%</strong></div>
+        <div class="occ-bar-track"><div class="occ-bar-fill" style="width:${Math.min(occ,100)}%;background:${fillColor}"></div></div>
+        <div class="stat-rooms">${roomLabel} 기준</div>`;
+    }
+    h+=`<div class="stat-card occ-card">
+      <div class="stat-label">${loc.label}</div>
+      <div class="stat-value" style="color:${loc.light}">${cnt}<span class="stat-unit">건</span></div>
+      ${occHtml}
+    </div>`;
+  });
+  document.getElementById("stats-bar").innerHTML=h;
+}
+
+/* ══ FILTER — 그룹명으로 표시 ══ */
+function renderFilter(){
+  let h=`<button class="fbtn" style="${filterLoc===null?'background:#1A1714;color:#fff':'background:#EDEBE6;color:#555'}" onclick="setFilter(null)">전체</button>`;
+  Object.entries(LOCS).forEach(([grp,loc])=>{
+    const a=filterLoc===grp;
+    h+=`<button class="fbtn" style="${a?`background:${loc.color};color:#fff`:'background:#EDEBE6;color:#555'}" onclick="setFilter('${grp.replace(/'/g,"\\'")}')">
+      <span class="fdot" style="background:${a?'#fff':loc.color}"></span>
+      ${loc.label}
+    </button>`;
+  });
+  document.getElementById("filter-bar").innerHTML=h;
+}
+function setFilter(grp){filterLoc=grp||null;selDay=null;renderFilter();renderStats();renderCal();resetDet();}
+
+/* ══ CALENDAR ══ */
+function getWeeks(y,m){
+  const dim=new Date(y,m+1,0).getDate(),fd=new Date(y,m,1).getDay();
+  const cells=[];
+  for(let i=0;i<fd;i++)cells.push(null);
+  for(let d=1;d<=dim;d++)cells.push(d);
+  while(cells.length%7)cells.push(null);
+  const wks=[];for(let i=0;i<cells.length;i+=7)wks.push(cells.slice(i,i+7));
+  return wks;
+}
+
+function getWeekBars(week,y,m){
+  const dates=week.map(d=>d?dk(y,m,d):null);
+  const valid=dates.filter(Boolean);if(!valid.length)return[];
+  const wS=valid[0],wE=valid[valid.length-1];
+  const evts=getF().filter(r=>r.시작<=wE&&r.종료>wS);
+  const pos=evts.map(r=>{
+    let sc=dates.findIndex(ds=>ds&&ds>=r.시작);
+    if(sc===-1)sc=dates.findIndex(ds=>ds!==null);
+    let ec=-1;for(let i=6;i>=0;i--){if(dates[i]&&dates[i]<r.종료){ec=i;break;}}
+    if(ec===-1||ec<sc)return null;
+    const isS=r.시작>=wS;
+    const isE=r.종료<=addDay(wE);
+    return{...r,sc,ec,isS,isE};
+  }).filter(Boolean);
+  pos.sort((a,b)=>a.sc-b.sc||(b.ec-b.sc)-(a.ec-a.sc));
+  const lanes=[];
+  return pos.map(ev=>{
+    let lane=0;
+    while(true){
+      if(!lanes[lane]){lanes[lane]=[];break;}
+      if(!lanes[lane].some(([s,e])=>!(ev.ec<s||ev.sc>e)))break;
+      lane++;
+    }
+    lanes[lane].push([ev.sc,ev.ec]);
+    return{...ev,lane};
+  });
+}
+
+function renderCal(){
+  document.getElementById("cal-title").textContent=`${curYear}년 ${MONTHS[curMonth]}`;
+  const weeks=getWeeks(curYear,curMonth);
+  const BH=22,BG=3,TP=4;
+  let h="";
+  weeks.forEach(week=>{
+    const bars=getWeekBars(week,curYear,curMonth);
+    const maxL=bars.reduce((m,b)=>Math.max(m,b.lane),-1);
+    /* 칸 높이: 이벤트 수에 맞게 자동 조절, 최소 120px */
+    const rowH=Math.max(120,(maxL+1)*(BH+BG)+TP+14+34);
+    h+=`<div class="week-row" style="min-height:${rowH}px">`;
+    /* Day number strip */
+    h+=`<div class="days-strip">`;
+    week.forEach((d,col)=>{
+      if(!d){h+=`<div class="dnum-cell empty"></div>`;return;}
+      const ds=dk(curYear,curMonth,d);
+      const dow=new Date(curYear,curMonth,d).getDay();
+      const isT=ds===TODAY,isS=selDay===d;
+      const dayRows=forDay(curYear,curMonth,d);
+      const cnt=dayRows.length;
+      const nc=isT?"":dow===0?"color:#DC2626":dow===6?"color:#2563EB":"color:#333";
+      /* 잔여 객실 배지: 용량 정의 시설 필터 시에만 표시 */
+      let badgeHtml="";
+      if(!isT){
+        const cap=filterLoc?ROOM_CAPACITY[filterLoc]:null;
+        if(cap&&cnt>0){
+          /* 해당 날짜 사용 방 합계 */
+          const usedRooms=dayRows.reduce((s,r)=>s+(r.방수||0),0);
+          const remain=Math.max(0,cap.total-usedRooms);
+          const pct=Math.round(usedRooms/cap.total*100);
+          const cls=pct>=100?"full":pct>=70?"warn":"ok";
+          badgeHtml=`<span class="room-badge ${cls}">${usedRooms}/${cap.total}</span>`;
+        } else if(cnt>0){
+          badgeHtml=`<span class="cnt-badge">${cnt}</span>`;
+        }
+      }
+      h+=`<div class="dnum-cell${isT?" today-bg":""}${isS?" sel-bg":""}" onclick="selDay_(${d})">
+        <span class="dnum-inner${isT?" td":""}" style="${nc}">${d}</span>
+        ${badgeHtml}
+      </div>`;
+    });
+    h+=`</div>`;
+    /* Events area */
+    h+=`<div class="evts-area">`;
+    h+=`<div class="click-grid">`;
+    week.forEach((d)=>{
+      if(!d){h+=`<div class="cc empty"></div>`;return;}
+      h+=`<div class="cc${selDay===d?" sel":""}" onclick="selDay_(${d})"></div>`;
+    });
+    h+=`</div>`;
+    if(bars.length){
+      h+=`<div class="bars-wrap">`;
+      bars.forEach(b=>{
+        const loc=getLoc(b.그룹);
+        const lp=(b.sc/7*100).toFixed(3);
+        const wp=((b.ec-b.sc+1)/7*100).toFixed(3);
+        const tp=TP+b.lane*(BH+BG);
+        const la=b.isS?"4px":"1px",ra=b.isE?"4px":"1px";
+        const cls=b.isS&&b.isE?"bs be":b.isS?"bs":b.isE?"be":"";
+        const bl=b.isS?`3px solid ${loc.color}`:"none";
+        const isVip=(b.vip==="사용");
+        const vipCls=isVip?" vip-bar":"";
+        const barLabel=b.isS?b.부서:"";
+        /* tooltip data attributes — escape 처리 */
+        const esc=s=>(s||"").replace(/"/g,"&quot;").replace(/\n/g," ");
+        h+=`<div class="ebar ${cls}${vipCls}"
+          style="left:calc(${lp}% + ${la});width:calc(${wp}% - ${la} - ${ra});top:${tp}px;background:${loc.light};color:${loc.color};border-left:${bl}"
+          data-dept="${esc(b.부서)}" data-user="${esc(b.사용자)}"
+          data-loc="${esc(b.지역)}" data-grp="${esc(b.그룹)}"
+          data-start="${b.시작}" data-end="${b.종료}"
+          data-rooms="${b.방수}" data-vip="${b.vip||'미사용'}"
+          data-purpose="${esc(b.목적||'')}"
+          data-roomname="${esc(b.호실||'')}"
+          onmouseenter="showTT(event,this)" onmouseleave="hideTT()"
+          onclick="openModal(this,event)">${barLabel}</div>`;
+      });
+      h+=`</div>`;
+    }
+    h+=`</div>`; /* evts-area */
+    h+=`</div>`; /* week-row */
+  });
+  document.getElementById("cal-body").innerHTML=h;
+}
+
+/* ══ DAY SELECTION ══ */
+function selDay_(d){
+  selDay=d;
+  switchTab("date");  // 날짜 클릭 시 날짜 탭으로 전환
+  renderCal();renderDet(dk(curYear,curMonth,d));
+  if(window.innerWidth<=768){
+    document.getElementById("cal-pane").classList.add("mhide");
+    document.getElementById("det-sidebar").classList.remove("mhide");
+    document.getElementById("back-btn").style.display="inline-block";
+  }
+}
+function barClick(dateStr,e){
+  /* openModal로 대체됨 — 하위 호환용으로 유지 */
+  e.stopPropagation();
+}
+function showCalMobile(){
+  selDay=null;
+  document.getElementById("cal-pane").classList.remove("mhide");
+  document.getElementById("det-sidebar").classList.add("mhide");
+  document.getElementById("back-btn").style.display="none";
+  renderCal();
+}
+
+/* ══ DETAIL — 원본 시설명(r.지역) 그대로 노출 ══ */
+function resetDet(){
+  document.getElementById("det-card").innerHTML=`
+    <div class="det-empty">
+      <div style="font-size:36px;margin-bottom:10px">📅</div>
+      <div style="font-size:13px;font-weight:700;color:#999;margin-bottom:5px">날짜를 선택하세요</div>
+      <div style="font-size:11px;color:#C8C4BD;line-height:1.7">달력에서 날짜를 클릭하면<br>예약 상세 내역을 확인할 수 있어요</div>
+    </div>`;
+}
+function renderDet(dateStr, crossMonth=false){
+  const res=DATA.filter(r=>{
+    if(filterLoc&&r.그룹!==filterLoc)return false;
+    return dateStr>=r.시작&&dateStr<r.종료;
+  });
+  const pts=dateStr.split("-");
+  const dow=WEEK[new Date(parseInt(pts[0]),parseInt(pts[1])-1,parseInt(pts[2])).getDay()];
+  const dlbl=`${pts[0]}년 ${parseInt(pts[1])}월 ${parseInt(pts[2])}일 (${dow})`;
+  /* 배지: 그룹명 기준 */
+  let badges=`<span class="badge" style="background:rgba(255,255,255,.12);color:#fff">총 ${res.length}건</span>`;
+  Object.entries(LOCS).forEach(([grp,loc])=>{
+    const cnt=res.filter(r=>r.그룹===grp).length;
+    if(cnt)badges+=`<span class="badge" style="background:${loc.color}55;color:#fff">${loc.label} ${cnt}</span>`;
+  });
+  let body;
+  if(!res.length){
+    body=`<div style="padding:28px;text-align:center;color:#AAA"><div style="font-size:26px;margin-bottom:7px">🌿</div><div style="font-size:12px">이 날은 예약이 없어요</div></div>`;
+  } else {
+    const cards=res.map(r=>{
+      const loc=getLoc(r.그룹);
+      const ni=diffDays(r.시작,r.종료);
+      /* rc-hdr: 그룹명(대분류) + 원본 시설명(소분류) 함께 표시 */
+      const isSameAsGroup = (r.지역===r.그룹);
+      return `<div class="res-card">
+        <div class="rc-hdr" style="background:${loc.color}">
+          <div>
+            <span class="rc-name">${r.그룹}</span>
+            ${!isSameAsGroup?`<span class="rc-sub">${r.지역}</span>`:""}
+          </div>
+          ${r.vip==="사용"?'<span class="vip-b">⭐ VIP룸</span>':""}
+        </div>
+        <div class="rc-body" style="background:${loc.light}">
+          <div class="dept">${r.부서}</div>
+          <div class="rmeta">
+            <div><span class="ml">신청자 </span><span class="mv">${r.신청자}</span></div>
+            <div><span class="ml">사용방 </span><span class="mv">${r.호실?r.호실+" ":""}${r.방수}개</span></div>
+            <div style="grid-column:span 2"><span class="ml">사용자 </span><span class="mv">${r.사용자}</span></div>
+            <div class="rdate">
+              <span style="color:#888;font-size:10px">📆 </span>
+              <span style="font-weight:700;color:${loc.color}">${r.시작} ~ ${r.종료}</span>
+              <span style="font-size:10px;color:#999;margin-left:4px">(${ni}박)</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+    body=`<div class="det-list">${cards}</div>`;
+  }
+  document.getElementById("det-card").innerHTML=`
+    <div class="det-hdr">
+      <div class="det-sub">선택된 날짜</div>
+      <div class="det-date">${dlbl}</div>
+      <div class="det-badges">${badges}</div>
+    </div>${body}`;
+}
+
+/* ══ LEGEND ══ */
+function renderLgd(){
+  let h=`<div class="lgd-title">시설 안내</div>`;
+  Object.entries(LOCS).forEach(([grp,loc])=>{
+    h+=`<div class="lgd-row">
+      <div class="lgd-dot" style="background:${loc.color}"></div>
+      <span class="lgd-name">${loc.label}</span>
+    </div>`;
+  });
+  h+=`<div class="lgd-note">⭐ VIP룸 = 솔샘연수원 VIP룸 포함 예약</div>`;
+  document.getElementById("lgd-card").innerHTML=h;
+  // populate loc-select
+  const sel=document.getElementById("loc-select");
+  if(sel){
+    sel.innerHTML=`<option value="">— 시설을 선택하세요 —</option>`;
+    Object.entries(LOCS).forEach(([grp,loc])=>{
+      sel.innerHTML+=`<option value="${grp}">${loc.label}</option>`;
+    });
+  }
+}
+
+/* ══ TAB SWITCHING ══ */
+function switchTab(tab){
+  ["date","user","loc"].forEach(t=>{
+    document.getElementById("tab-"+t).classList.toggle("on", t===tab);
+    document.getElementById("panel-"+t).classList.toggle("on", t===tab);
+  });
+  // show sidebar on mobile when switching to search tabs
+  if(tab!=="date"&&window.innerWidth<=768){
+    document.getElementById("cal-pane").classList.add("mhide");
+    document.getElementById("det-sidebar").classList.remove("mhide");
+    document.getElementById("back-btn").style.display="inline-block";
+  }
+}
+
+/* ══ USER SEARCH ══ */
+let selectedUser = null;
+
+function onUserInput(val){
+  selectedUser = null;
+  document.getElementById("user-result").style.display="none";
+  const q = val.trim().toLowerCase();
+  if(!q){ document.getElementById("user-list").innerHTML=""; return; }
+  // 사용자 이름 기준 유니크 목록
+  const matched = [...new Map(
+    DATA.filter(r=> r.사용자.toLowerCase().includes(q) || r.신청자.toLowerCase().includes(q))
+        .map(r=>[ r.사용자, {사용자:r.사용자, 부서:r.부서} ])
+  ).values()].slice(0,8);
+  if(!matched.length){
+    document.getElementById("user-list").innerHTML=`<div class="result-empty">검색 결과가 없어요</div>`;
+    return;
+  }
+  let h="";
+  matched.forEach(u=>{
+    h+=`<div class="user-item" onclick="selectUser('${u.사용자.replace(/'/g,"\\'")}')">
+      <div class="user-item-name">${u.사용자}</div>
+      <div class="user-item-dept">${u.부서}</div>
+    </div>`;
+  });
+  document.getElementById("user-list").innerHTML=`<div class="user-result-list">${h}</div>`;
+}
+
+function selectUser(name){
+  selectedUser = name;
+  document.getElementById("user-input").value = name;
+  document.getElementById("user-list").innerHTML="";
+  renderUserResult();
+}
+
+function clearUserDates(){
+  document.getElementById("user-from").value="";
+  document.getElementById("user-to").value="";
+  renderUserResult();
+}
+
+function renderUserResult(){
+  if(!selectedUser) return;
+  const from = document.getElementById("user-from").value;
+  const to   = document.getElementById("user-to").value;
+  const rows = DATA.filter(r=>{
+    if(r.사용자 !== selectedUser) return false;
+    if(from && r.종료 <= from) return false;
+    if(to   && r.시작 >  to)   return false;
+    return true;
+  });
+  const box = document.getElementById("user-result");
+  box.style.display="block";
+  if(!rows.length){
+    box.innerHTML=`<div class="result-empty">해당 기간에 예약 내역이 없어요</div>`;
+    return;
+  }
+  // 총 집계
+  const totalNights = rows.reduce((s,r)=>s+diffDays(r.시작,r.종료),0);
+  const totalRooms  = rows.reduce((s,r)=>s+r.방수,0);
+  // 시설별 집계
+  const byGrp = {};
+  rows.forEach(r=>{
+    if(!byGrp[r.그룹]) byGrp[r.그룹]={cnt:0,nights:0,rooms:0};
+    byGrp[r.그룹].cnt++;
+    byGrp[r.그룹].nights+=diffDays(r.시작,r.종료);
+    byGrp[r.그룹].rooms+=r.방수;
+  });
+  // 최근 이용 내역
+  const sorted=[...rows].sort((a,b)=>b.시작.localeCompare(a.시작)).slice(0,5);
+  let locRows="";
+  Object.entries(byGrp).forEach(([grp,s])=>{
+    const loc=getLoc(grp);
+    locRows+=`<div class="loc-row">
+      <div class="loc-color" style="background:${loc.color}"></div>
+      <div class="loc-row-name">${loc.label}</div>
+      <div class="loc-stats">
+        <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.cnt}</span><span class="loc-stat-lbl">이용</span></div>
+        <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.nights}</span><span class="loc-stat-lbl">박</span></div>
+        <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.rooms}</span><span class="loc-stat-lbl">방</span></div>
+      </div>
+    </div>`;
+  });
+  let histCards = sorted.map(r=>{
+    const loc=getLoc(r.그룹);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border-radius:8px">
+      <div style="width:8px;height:8px;border-radius:50%;background:${loc.color};flex-shrink:0"></div>
+      <div style="flex:1;font-size:11px">
+        <span style="font-weight:700">${loc.label}</span>
+        <span style="color:#999;margin-left:4px">${r.지역!==r.그룹?r.지역:""}</span><br>
+        <span style="color:#888;font-size:10px">${r.시작} ~ ${r.종료} · ${diffDays(r.시작,r.종료)}박 · ${r.방수}방</span>
+      </div>
+      ${r.vip==="사용"?'<span style="font-size:9px;background:#FEF3C7;color:#D97706;padding:2px 6px;border-radius:6px;font-weight:700">VIP</span>':""}
+    </div>`;
+  }).join("");
+  box.innerHTML=`
+    <div class="det-hdr" style="background:var(--dark)">
+      <div class="det-sub">사용자 통계</div>
+      <div class="det-date">${selectedUser}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:3px">${rows[0]?.부서||""}</div>
+    </div>
+    <div class="sum-row">
+      <div class="sum-cell"><div class="sum-val">${rows.length}<span class="sum-unit">번</span></div><div class="sum-lbl">총 이용 횟수</div></div>
+      <div class="sum-cell"><div class="sum-val">${totalNights}<span class="sum-unit">박</span></div><div class="sum-lbl">누적 숙박</div></div>
+      <div class="sum-cell"><div class="sum-val">${totalRooms}<span class="sum-unit">개</span></div><div class="sum-lbl">누적 방 수</div></div>
+    </div>
+    <div class="loc-rows">${locRows}</div>
+    <div style="padding:8px 12px 4px;font-size:9px;font-weight:800;color:#AAA;letter-spacing:1px">최근 이용 내역</div>
+    <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:5px">${histCards}</div>`;
+}
+
+/* ══ LOCATION SEARCH ══ */
+function clearLocDates(){
+  document.getElementById("loc-from").value="";
+  document.getElementById("loc-to").value="";
+  renderLocResult();
+}
+
+function renderLocResult(){
+  const grp = document.getElementById("loc-select").value;
+  const box = document.getElementById("loc-result");
+  if(!grp){ box.style.display="none"; return; }
+  box.style.display="block";
+  const from = document.getElementById("loc-from").value;
+  const to   = document.getElementById("loc-to").value;
+  const rows = DATA.filter(r=>{
+    if(r.그룹 !== grp) return false;
+    if(from && r.종료 <= from) return false;
+    if(to   && r.시작 >  to)   return false;
+    return true;
+  });
+  const loc = getLoc(grp);
+  if(!rows.length){
+    box.innerHTML=`<div class="result-empty">해당 기간에 예약 내역이 없어요</div>`;
+    return;
+  }
+  const totalNights = rows.reduce((s,r)=>s+diffDays(r.시작,r.종료),0);
+  const totalRooms  = rows.reduce((s,r)=>s+r.방수,0);
+  const vipCnt      = rows.filter(r=>r.vip==="사용").length;
+  // 신청자별 집계 (박수 내림차순)
+  const byApplicant = {};
+  rows.forEach(r=>{
+    const key=r.신청자||r.사용자||"미상";
+    if(!byApplicant[key]) byApplicant[key]={cnt:0,nights:0,rooms:0,dept:r.부서,vip:false};
+    byApplicant[key].cnt++;
+    byApplicant[key].nights+=diffDays(r.시작,r.종료);
+    byApplicant[key].rooms+=r.방수;
+    if(r.vip==="사용") byApplicant[key].vip=true;
+  });
+  const applicantRows = Object.entries(byApplicant)
+    .sort((a,b)=>b[1].nights-a[1].nights)
+    .map(([name,s])=>`
+      <div class="loc-row">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}${s.vip?'<span style="font-size:9px;background:#FEF3C7;color:#B45309;padding:1px 5px;border-radius:5px;font-weight:800;margin-left:5px">VIP</span>':''}</div>
+          <div style="font-size:10px;color:#999;margin-top:1px">${s.dept}</div>
+        </div>
+        <div class="loc-stats">
+          <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.cnt}</span><span class="loc-stat-lbl">이용</span></div>
+          <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.nights}</span><span class="loc-stat-lbl">박</span></div>
+          <div class="loc-stat"><span class="loc-stat-val" style="color:${loc.color}">${s.rooms}</span><span class="loc-stat-lbl">방</span></div>
+        </div>
+      </div>`).join("");
+  // 최근 5건
+  const sorted=[...rows].sort((a,b)=>b.시작.localeCompare(a.시작)).slice(0,5);
+  const histCards=sorted.map(r=>`
+    <div style="display:flex;gap:8px;padding:7px 10px;background:var(--bg);border-radius:8px;align-items:flex-start">
+      <div style="flex:1;font-size:11px">
+        <span style="font-weight:700">${r.신청자||r.사용자}</span>
+        <span style="color:#888;font-size:10px;margin-left:4px">(${r.부서})</span><br>
+        <span style="color:#999;font-size:10px">${r.시작} ~ ${r.종료} · ${diffDays(r.시작,r.종료)}박 · ${r.방수}방</span>
+      </div>
+      ${r.vip==="사용"?'<span style="font-size:9px;background:#FEF3C7;color:#D97706;padding:2px 6px;border-radius:6px;font-weight:700">VIP</span>':""}
+    </div>`).join("");
+  box.innerHTML=`
+    <div class="det-hdr" style="background:${loc.color}">
+      <div class="det-sub">시설 통계</div>
+      <div class="det-date">${loc.label}</div>
+    </div>
+    <div class="sum-row">
+      <div class="sum-cell"><div class="sum-val">${rows.length}<span class="sum-unit">건</span></div><div class="sum-lbl">총 예약 수</div></div>
+      <div class="sum-cell"><div class="sum-val">${totalNights}<span class="sum-unit">박</span></div><div class="sum-lbl">누적 숙박</div></div>
+      <div class="sum-cell"><div class="sum-val">${totalRooms}<span class="sum-unit">개</span></div><div class="sum-lbl">누적 방 수</div></div>
+    </div>
+    ${vipCnt?`<div style="padding:6px 12px;font-size:11px;color:#D97706;font-weight:700;background:#FFFBEB;border-top:1px solid #FDE68A">⭐ VIP룸 이용 ${vipCnt}건 포함</div>`:""}
+    <div style="padding:8px 12px 4px;font-size:9px;font-weight:800;color:#AAA;letter-spacing:1px">신청자별 이용 현황</div>
+    <div class="loc-rows">${applicantRows}</div>
+    <div style="padding:8px 12px 4px;font-size:9px;font-weight:800;color:#AAA;letter-spacing:1px">최근 예약 내역</div>
+    <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:5px">${histCards}</div>`;
+}
+
+/* ══ NAV ══ */
+function prevMonth(){if(curMonth===0){curMonth=11;curYear--;}else curMonth--;selDay=null;renderStats();renderCal();resetDet();}
+function nextMonth(){if(curMonth===11){curMonth=0;curYear++;}else curMonth++;selDay=null;renderStats();renderCal();resetDet();}
+
+/* ══ LOADING / ERROR ══ */
+function showErr(){
+  document.getElementById("ld").classList.add("off");
+  document.getElementById("er").classList.remove("off");
+}
+
+/* ══ TOOLTIP ══ */
+const TT = document.getElementById("bar-tooltip");
+function showTT(e, el){
+  const d   = el.dataset;
+  const ni  = Math.round((new Date(d.end)-new Date(d.start))/86400000);
+  const loc = getLoc(d.grp);
+  /* 헤더 배경 = 시설 대표색 */
+  const ttHead = document.getElementById("tt-head");
+  ttHead.textContent = d.grp + (d.grp!==d.loc?" · "+d.loc:"");
+  ttHead.style.background = loc.color;
+  /* 호실 및 VIP 뱃지 */
+  const vipBadge = d.vip==="사용" ? ' <span class="tt-vip">⭐ VIP</span>' : "";
+  const roomVal  = d.roomname
+    ? d.roomname + (parseInt(d.rooms)>1?" ("+d.rooms+"개)":"")
+    : (d.rooms||0)+"개";
+  document.getElementById("tt-body").innerHTML =
+    `<div class="tt-row"><span class="tt-lbl">부서</span><span class="tt-val">${d.dept}</span></div>
+     <div class="tt-row"><span class="tt-lbl">사용자</span><span class="tt-val">${d.user}${vipBadge}</span></div>
+     <div class="tt-row"><span class="tt-lbl">기간</span><span class="tt-val">${d.start} ~ ${d.end} (${ni}박)</span></div>
+     <div class="tt-row"><span class="tt-lbl">객실</span><span class="tt-val">${roomVal}</span></div>
+     ${d.purpose?`<div class="tt-row"><span class="tt-lbl">목적</span><span class="tt-val">${d.purpose}</span></div>`:""}`;
+  TT.classList.add("show");
+  moveTT(e);
+}
+function moveTT(e){
+  const margin=12, W=TT.offsetWidth||220, H=TT.offsetHeight||100;
+  let x=e.clientX+margin, y=e.clientY+margin;
+  if(x+W>window.innerWidth)  x=e.clientX-W-margin;
+  if(y+H>window.innerHeight) y=e.clientY-H-margin;
+  TT.style.left=x+"px"; TT.style.top=y+"px";
+}
+function hideTT(){ TT.classList.remove("show"); }
+document.addEventListener("mousemove", e=>{ if(TT.classList.contains("show")) moveTT(e); });
+
+/* ══ MODAL ══ */
+let _modalDateStr = null;
+function openModal(el, e){
+  e.stopPropagation();
+  hideTT();
+  const d  = el.dataset;
+  const ni = Math.round((new Date(d.end)-new Date(d.start))/86400000);
+  const loc = getLoc(d.grp);
+  /* header */
+  document.getElementById("modal-hdr").style.background = loc.color;
+  document.getElementById("modal-title").textContent = d.grp + (d.grp!==d.loc?" · "+d.loc:"");
+  document.getElementById("modal-sub").textContent   = `${d.start} ~ ${d.end} · ${ni}박`;
+  /* body */
+  const vipBadge = d.vip==="사용"?'<span class="mf-vip">⭐ VIP룸</span>':"";
+  document.getElementById("modal-body").innerHTML = `
+    <div class="modal-field">
+      <div class="mf-lbl">부서</div>
+      <div class="mf-val">${d.dept}</div>
+    </div>
+    <div class="modal-field">
+      <div class="mf-lbl">사용자</div>
+      <div class="mf-val">${d.user}${vipBadge}</div>
+    </div>
+    <div class="modal-field">
+      <div class="mf-lbl">숙박</div>
+      <div class="mf-val">${ni}박</div>
+    </div>
+    <div class="modal-field">
+      <div class="mf-lbl">사용 객실</div>
+      <div class="mf-val">${d.roomname?d.roomname+" ":""}${d.rooms>0?"("+d.rooms+"개)":d.roomname?"":"0개"}</div>
+    </div>
+    ${d.purpose?`<div class="modal-field full"><div class="mf-lbl">사용 목적</div><div class="mf-val">${d.purpose}</div></div>`:""}
+    <div class="modal-field full">
+      <div class="mf-lbl">시설</div>
+      <div class="mf-val" style="color:${loc.color}">${d.loc}</div>
+    </div>`;
+  /* 날짜로 이동 버튼 */
+  _modalDateStr = d.start;
+  document.getElementById("modal-go-btn").onclick = ()=>{
+    closeModalBtn();
+    const pts=d.start.split("-");
+    const by=parseInt(pts[0]),bm=parseInt(pts[1])-1,bd=parseInt(pts[2]);
+    if(by===curYear&&bm===curMonth){ selDay_(bd); }
+    else { curYear=by; curMonth=bm; renderStats(); renderCal(); selDay_(bd); }
+  };
+  document.getElementById("bar-modal-overlay").classList.add("show");
+}
+function closeModal(e){ if(e.target===document.getElementById("bar-modal-overlay")) closeModalBtn(); }
+function closeModalBtn(){ document.getElementById("bar-modal-overlay").classList.remove("show"); }
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModalBtn(); });
+
+/* ══ START ══ */
+loadCSV(CSV_FILE);
+</script>
+</body>
+</html>
