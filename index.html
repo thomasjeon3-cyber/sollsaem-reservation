@@ -565,21 +565,27 @@ body {
         border-radius:50%;color:#fff;font-size:16px;cursor:pointer;
         display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
-    <div style="padding:14px 16px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+    <!-- 월 선택 바 -->
+    <div style="padding:10px 16px 0; display:flex; align-items:center; gap:8px;">
+      <span style="font-size:11px;font-weight:700;color:#555;flex-shrink:0">출력 월 선택</span>
+      <select id="print-year-sel" style="flex:1;padding:5px 8px;border:1.5px solid #E8E4DC;border-radius:7px;font-family:inherit;font-size:12px;font-weight:700;color:#1A1714;background:#F9F7F4;outline:none;cursor:pointer"></select>
+      <select id="print-month-sel" style="flex:1;padding:5px 8px;border:1.5px solid #E8E4DC;border-radius:7px;font-family:inherit;font-size:12px;font-weight:700;color:#1A1714;background:#F9F7F4;outline:none;cursor:pointer"></select>
+    </div>
+    <div style="padding:10px 16px 0; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <button class="popt" onclick="doPrint('monthly')">
         <div class="popt-icon">📅</div>
         <div class="popt-title">월별 전체 예약</div>
-        <div class="popt-desc">이번 달 모든 예약을<br>시설별 색상 카드로 출력</div>
+        <div class="popt-desc">선택한 월의 전체 예약을<br>날짜순 표로 출력</div>
       </button>
       <button class="popt" onclick="doPrint('facility')">
         <div class="popt-icon">🏨</div>
         <div class="popt-title">시설별 예약현황</div>
-        <div class="popt-desc">시설별 구분 표로<br>전체 예약 목록 출력</div>
+        <div class="popt-desc">선택한 월을 시설별로<br>구분하여 출력</div>
       </button>
       <button class="popt" onclick="doPrint('date')">
         <div class="popt-icon">📋</div>
         <div class="popt-title">날짜 상세</div>
-        <div class="popt-desc">선택한 날짜의<br>예약 카드 출력</div>
+        <div class="popt-desc">달력에서 선택한<br>날짜 예약 카드 출력</div>
       </button>
       <button class="popt" onclick="doPrint('summary')">
         <div class="popt-icon">📊</div>
@@ -587,7 +593,7 @@ body {
         <div class="popt-desc">시설별 건수·박수·<br>점유율 요약표 출력</div>
       </button>
     </div>
-    <div style="padding:0 16px 14px; font-size:10px; color:#AAA; text-align:center;">
+    <div style="padding:8px 16px 14px; font-size:10px; color:#AAA; text-align:center;">
       새 탭에서 인쇄 미리보기가 열립니다 · Ctrl+P 로 인쇄
     </div>
   </div>
@@ -683,9 +689,10 @@ body {
 
       <!-- TAB NAV -->
       <div class="side-tabs">
-        <button class="stab on"  id="tab-date" onclick="switchTab('date')">📅<br>날짜 상세</button>
-        <button class="stab"     id="tab-user" onclick="switchTab('user')">👤<br>사용자 조회</button>
-        <button class="stab"     id="tab-loc"  onclick="switchTab('loc')">🏨<br>시설 조회</button>
+        <button class="stab on"  id="tab-date"  onclick="switchTab('date')">📅<br>날짜 상세</button>
+        <button class="stab"     id="tab-user"  onclick="switchTab('user')">👤<br>사용자 조회</button>
+        <button class="stab"     id="tab-loc"   onclick="switchTab('loc')">🏨<br>시설 조회</button>
+        <button class="stab"     id="tab-stats" onclick="switchTab('stats')">📊<br>예약 통계</button>
       </div>
 
       <!-- PANEL 1: 날짜 상세 -->
@@ -742,6 +749,16 @@ body {
           </div>
         </div>
         <div class="search-box" id="loc-result" style="display:none"></div>
+      </div>
+
+      <!-- PANEL 4: 예약 통계 -->
+      <div class="side-panel" id="panel-stats">
+        <div id="stats-panel-content">
+          <div style="padding:28px;text-align:center;color:#AAA">
+            <div style="font-size:28px;margin-bottom:8px">📊</div>
+            <div style="font-size:12px;font-weight:700">데이터 로딩 중...</div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -1200,9 +1217,11 @@ function renderLgd(){
 
 /* ══ TAB SWITCHING ══ */
 function switchTab(tab){
-  ["date","user","loc"].forEach(t=>{
-    document.getElementById("tab-"+t).classList.toggle("on", t===tab);
-    document.getElementById("panel-"+t).classList.toggle("on", t===tab);
+  ["date","user","loc","stats"].forEach(t=>{
+    const te=document.getElementById("tab-"+t);
+    const pe=document.getElementById("panel-"+t);
+    if(te) te.classList.toggle("on", t===tab);
+    if(pe) pe.classList.toggle("on", t===tab);
   });
   // show sidebar on mobile when switching to search tabs
   if(tab!=="date"&&window.innerWidth<=768){
@@ -1210,6 +1229,7 @@ function switchTab(tab){
     document.getElementById("det-sidebar").classList.remove("mhide");
     document.getElementById("back-btn").style.display="inline-block";
   }
+  if(tab==="stats") renderStatsPanel();
 }
 
 /* ══ USER SEARCH ══ */
@@ -1499,21 +1519,38 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModalBtn(); 
 
 /* ══ PRINT DIALOG ══ */
 function openPrintDialog(){
+  /* 연도 옵션 채우기 */
+  const ySel=document.getElementById("print-year-sel");
+  const mSel=document.getElementById("print-month-sel");
+  if(!ySel.options.length){
+    const years=[...new Set(DATA.map(r=>r.시작.slice(0,4)))].sort();
+    years.forEach(y=>{ const o=document.createElement("option");o.value=y;o.textContent=y+"년";ySel.appendChild(o); });
+    MONTHS.forEach((m,i)=>{ const o=document.createElement("option");o.value=i;o.textContent=m;mSel.appendChild(o); });
+  }
+  ySel.value=String(curYear);
+  mSel.value=String(curMonth);
   document.getElementById("print-overlay").style.display="flex";
+}
+function getPrintYM(){
+  return {
+    y: parseInt(document.getElementById("print-year-sel").value||curYear),
+    m: parseInt(document.getElementById("print-month-sel").value??curMonth)
+  };
 }
 function closePrintDialog(){
   document.getElementById("print-overlay").style.display="none";
 }
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closePrintDialog();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closePrintDialog();closeModalBtn();}});
 
 /* ── 공통 인쇄 헬퍼 ── */
-function printHead(title){
+function printHead(title, py, pm){
   const facs=Object.entries(LOCS).map(([g,l])=>
     `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px">
       <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${l.color}"></span>
       <span style="font-size:10px;color:#555">${l.label}</span></span>`).join("");
   const now=new Date();
   const ts=`${now.getFullYear()}.${p(now.getMonth()+1)}.${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+  const yl=py!=null?py:curYear, ml=pm!=null?pm:curMonth;
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <title>${title}</title>
@@ -1532,7 +1569,7 @@ h1{font-size:16px;font-weight:900;margin-bottom:2px}
 }
 </style></head><body>
 <div class="ph">
-  <div><h1>🌲 ${title}</h1><div class="ph-sub">${curYear}년 ${MONTHS[curMonth]} · 총 ${DATA.length}건 데이터 기준</div></div>
+  <div><h1>🌲 ${title}</h1><div class="ph-sub">${yl}년 ${MONTHS[ml]} · 총 ${DATA.length}건 데이터 기준</div></div>
   <div class="ph-ts">출력: ${ts}</div>
 </div>
 <div class="fleg">${facs}</div>`;
@@ -1540,10 +1577,11 @@ h1{font-size:16px;font-weight:900;margin-bottom:2px}
 
 /* ① 월별 전체 예약 */
 function printMonthly(){
-  const mk=`${curYear}-${p(curMonth+1)}`;
+  const {y:py,m:pm}=getPrintYM();
+  const mk=`${py}-${p(pm+1)}`;
   const rows=DATA.filter(r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31"));
   rows.sort((a,b)=>a.시작.localeCompare(b.시작));
-  let body=printHead(`${curYear}년 ${MONTHS[curMonth]} 전체 예약현황`);
+  let body=printHead(`${py}년 ${MONTHS[pm]} 전체 예약현황`,py,pm);
   body+=`<div style="font-size:10px;color:#888;margin-bottom:8px">총 ${rows.length}건</div>`;
   body+=`<table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
   <colgroup>
@@ -1581,8 +1619,9 @@ function printMonthly(){
 
 /* ② 시설별 예약현황 */
 function printFacility(){
-  let body=printHead("시설별 예약현황");
-  const mk=`${curYear}-${p(curMonth+1)}`;
+  const {y:py,m:pm}=getPrintYM();
+  let body=printHead(`${py}년 ${MONTHS[pm]} 시설별 예약현황`,py,pm);
+  const mk=`${py}-${p(pm+1)}`;
   const monthRows=DATA.filter(r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31"));
   Object.entries(LOCS).forEach(([grp,loc])=>{
     const rows=monthRows.filter(r=>r.그룹===grp);
@@ -1677,10 +1716,11 @@ function printDate(){
 
 /* ④ 월별 통계 요약 */
 function printSummary(){
-  const mk=`${curYear}-${p(curMonth+1)}`;
+  const {y:py,m:pm}=getPrintYM();
+  const mk=`${py}-${p(pm+1)}`;
   const inM=r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31");
   const all=DATA.filter(inM);
-  let body=printHead(`${curYear}년 ${MONTHS[curMonth]} 예약 통계 요약`);
+  let body=printHead(`${py}년 ${MONTHS[pm]} 예약 통계 요약`,py,pm);
   body+=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px">
   <thead><tr style="background:#1A1714;color:#fff">
     <th style="padding:7px 10px;text-align:left">시설</th>
@@ -1770,6 +1810,143 @@ function openPrint(html){
   w.document.write(html);
   w.document.close();
   w.onload=()=>{ w.focus(); setTimeout(()=>w.print(),300); };
+}
+
+/* ══ STATS PANEL (예약 통계 탭) ══ */
+function renderStatsPanel(){
+  const el=document.getElementById("stats-panel-content");
+  if(!DATA.length){el.innerHTML='<div style="padding:28px;text-align:center;color:#AAA;font-size:12px">데이터 없음</div>';return;}
+
+  const dim=new Date(curYear,curMonth+1,0).getDate();
+  const dayCnt=[];
+  for(let d=1;d<=dim;d++){
+    const ds=dk(curYear,curMonth,d);
+    dayCnt.push(DATA.filter(r=>ds>=r.시작&&ds<r.종료).length);
+  }
+  const maxCnt=Math.max(...dayCnt,1);
+  const facKeys=Object.keys(LOCS);
+
+  /* 일별 스택 바 */
+  let bars="";
+  for(let d=1;d<=dim;d++){
+    const ds=dk(curYear,curMonth,d);
+    const cnt=dayCnt[d-1];
+    const dow=new Date(curYear,curMonth,d).getDay();
+    const isT=ds===TODAY, isSat=dow===6, isSun=dow===0;
+    let stackHtml="",yOff=0;
+    facKeys.forEach(grp=>{
+      const fc=DATA.filter(r=>ds>=r.시작&&ds<r.종료&&r.그룹===grp).length;
+      if(!fc)return;
+      const fh=Math.max(2,Math.round(fc/maxCnt*60));
+      stackHtml+=`<div style="position:absolute;bottom:${yOff}px;left:0;right:0;height:${fh}px;background:${getLoc(grp).color};opacity:.85"></div>`;
+      yOff+=fh;
+    });
+    const bgCol=isT?"#FEF3C7":isSun?"#FFF0F0":isSat?"#F0F4FF":"#F6F4EF";
+    const numCol=isT?"#F59E0B":isSun?"#DC2626":isSat?"#2563EB":"#888";
+    bars+=`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex:1;min-width:0"
+      title="${ds}: ${cnt}건" onclick="selDay_(${d});switchTab('date')">
+      <div style="font-size:7px;font-weight:700;color:${cnt>0?'#1A1714':'#CCC'}">${cnt||''}</div>
+      <div style="position:relative;width:100%;height:64px;background:${bgCol};border-radius:3px 3px 0 0;overflow:hidden">
+        ${stackHtml}${isT?'<div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:#F59E0B"></div>':""}
+      </div>
+      <div style="font-size:7px;color:${numCol};font-weight:${isT?900:500}">${d}</div>
+    </div>`;
+  }
+
+  /* 성수기/비성수기 주말 분석 */
+  const wkndMap={};
+  DATA.forEach(r=>{
+    let cur=new Date(r.시작+"T00:00:00");
+    const end=new Date(r.종료+"T00:00:00");
+    while(cur<end){
+      const dow=cur.getDay();
+      if(dow===6||dow===0){
+        const ds=`${cur.getFullYear()}-${p(cur.getMonth()+1)}-${p(cur.getDate())}`;
+        wkndMap[ds]=(wkndMap[ds]||0)+1;
+      }
+      cur.setDate(cur.getDate()+1);
+    }
+  });
+  const weekMap={};
+  Object.entries(wkndMap).forEach(([ds,cnt])=>{
+    const d=new Date(ds+"T00:00:00");
+    const sat=new Date(d);
+    if(d.getDay()===0) sat.setDate(d.getDate()-1);
+    const satStr=`${sat.getFullYear()}-${p(sat.getMonth()+1)}-${p(sat.getDate())}`;
+    weekMap[satStr]=(weekMap[satStr]||0)+cnt;
+  });
+  const sorted=Object.entries(weekMap).sort((a,b)=>b[1]-a[1]);
+  const total=sorted.length;
+  const topN=Math.min(6,Math.ceil(total*0.2)||3);
+  const botN=Math.min(6,Math.ceil(total*0.2)||3);
+  const peak=sorted.slice(0,topN);
+  const offpeak=sorted.slice(-botN).reverse();
+
+  function wkLabel(satStr){
+    const sd=new Date(satStr+"T00:00:00");
+    const ed=new Date(sd); ed.setDate(ed.getDate()+1);
+    return `${sd.getFullYear()}.${p(sd.getMonth()+1)}.${p(sd.getDate())}(토)~${p(ed.getDate())}(일)`;
+  }
+  const peakRows=peak.map(([s,c])=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0EDE6;gap:6px">
+      <span style="font-size:10px;font-weight:600;color:#1A1714;flex:1">${wkLabel(s)}</span>
+      <span style="font-size:10px;font-weight:900;color:#DC2626;background:#FEE2E2;border-radius:10px;padding:1px 8px;white-space:nowrap">${c}건</span>
+    </div>`).join("");
+  const offRows=offpeak.map(([s,c])=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F0EDE6;gap:6px">
+      <span style="font-size:10px;font-weight:600;color:#1A1714;flex:1">${wkLabel(s)}</span>
+      <span style="font-size:10px;font-weight:900;color:#16A34A;background:#DCFCE7;border-radius:10px;padding:1px 8px;white-space:nowrap">${c}건</span>
+    </div>`).join("");
+
+  /* 월별 추이 */
+  const monthTotals=Array.from({length:12},(_,mi)=>{
+    const mmk=`${curYear}-${p(mi+1)}`;
+    return DATA.filter(r=>r.시작.startsWith(mmk)||r.종료.startsWith(mmk)).length;
+  });
+  const maxMt=Math.max(...monthTotals,1);
+  const monthBars=monthTotals.map((cnt,i)=>{
+    const h=Math.max(2,Math.round(cnt/maxMt*36));
+    const isC=i===curMonth;
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+      <div style="font-size:7px;color:${cnt>0?'#555':'#CCC'}">${cnt||''}</div>
+      <div style="width:100%;height:${h}px;background:${isC?'#F59E0B':'#1D6FA4'};border-radius:2px;opacity:${isC?1:.65}"></div>
+      <div style="font-size:7px;color:${isC?'#F59E0B':'#888'};font-weight:${isC?900:400}">${i+1}월</div>
+    </div>`;
+  }).join("");
+
+  el.innerHTML=`
+  <div style="background:#fff;border-radius:10px;padding:11px 12px;margin-bottom:8px;border:1px solid #E8E4DC">
+    <div style="font-size:8.5px;font-weight:900;color:#AAA;letter-spacing:1px;margin-bottom:8px">${curYear}년 월별 예약 추이</div>
+    <div style="display:flex;align-items:flex-end;gap:2px;height:54px">${monthBars}</div>
+  </div>
+  <div style="background:#fff;border-radius:10px;padding:11px 12px;margin-bottom:8px;border:1px solid #E8E4DC">
+    <div style="font-size:8.5px;font-weight:900;color:#AAA;letter-spacing:1px;margin-bottom:4px">${curYear}년 ${MONTHS[curMonth]} 일별 예약 집중도</div>
+    <div style="font-size:7.5px;color:#999;margin-bottom:6px">막대 클릭 → 해당 날짜 상세</div>
+    <div style="display:flex;align-items:flex-end;gap:1px">${bars}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px">
+      ${Object.entries(LOCS).map(([g,l])=>`<span style="display:flex;align-items:center;gap:3px;font-size:8px;color:#555"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${l.color}"></span>${l.label}</span>`).join("")}
+    </div>
+  </div>
+  <div style="background:#fff;border-radius:10px;padding:11px 12px;margin-bottom:8px;border:1px solid #E8E4DC">
+    <div style="font-size:8.5px;font-weight:900;color:#AAA;letter-spacing:1px;margin-bottom:8px">주말 성수기 · 비성수기 분석 (전체 데이터 기준)</div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#DC2626;display:inline-block;flex-shrink:0"></span>
+        <span style="font-size:10px;font-weight:900;color:#DC2626">성수기 주말 (예약 집중 TOP ${topN})</span>
+      </div>
+      ${peakRows||'<div style="font-size:10px;color:#CCC;padding:4px 0">데이터 없음</div>'}
+    </div>
+    <div>
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#16A34A;display:inline-block;flex-shrink:0"></span>
+        <span style="font-size:10px;font-weight:900;color:#16A34A">비성수기 주말 (예약 적음 TOP ${botN})</span>
+      </div>
+      ${offRows||'<div style="font-size:10px;color:#CCC;padding:4px 0">데이터 없음</div>'}
+    </div>
+    <div style="margin-top:8px;padding-top:7px;border-top:1px solid #F0EDE6;font-size:9px;color:#BBB">
+      * 토·일 합산 예약 건수 기준 · 상위 20% = 성수기 · 하위 20% = 비성수기
+    </div>
+  </div>`;
 }
 
 /* ══ START ══ */
