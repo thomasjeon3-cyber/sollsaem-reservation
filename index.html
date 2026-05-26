@@ -582,10 +582,10 @@ body {
         <div class="popt-title">시설별 예약현황</div>
         <div class="popt-desc">선택한 월을 시설별로<br>구분하여 출력</div>
       </button>
-      <button class="popt" onclick="doPrint('date')">
+      <button class="popt" onclick="openDateFacilityPicker()">
         <div class="popt-icon">📋</div>
         <div class="popt-title">날짜 상세</div>
-        <div class="popt-desc">달력에서 선택한<br>날짜 예약 카드 출력</div>
+        <div class="popt-desc">선택한 날짜 예약을<br>시설별로 선택 출력</div>
       </button>
       <button class="popt" onclick="doPrint('summary')">
         <div class="popt-icon">📊</div>
@@ -595,6 +595,59 @@ body {
     </div>
     <div style="padding:8px 16px 14px; font-size:10px; color:#AAA; text-align:center;">
       새 탭에서 인쇄 미리보기가 열립니다 · Ctrl+P 로 인쇄
+    </div>
+  </div>
+</div>
+
+<!-- DATE FACILITY PICKER -->
+<div id="date-fac-overlay" style="
+  display:none; position:fixed; inset:0; z-index:9200;
+  background:rgba(0,0,0,.65); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;">
+  <div style="
+    background:#fff; border-radius:18px; width:92%; max-width:400px;
+    box-shadow:0 24px 64px rgba(0,0,0,.35); overflow:hidden;
+    animation:modalIn .18s ease;">
+
+    <!-- 헤더 -->
+    <div id="dfp-hdr" style="background:#1A1714; padding:14px 18px; display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#fff">📋 날짜 상세 출력</div>
+        <div id="dfp-date-label" style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px"></div>
+      </div>
+      <button onclick="closeDateFacilityPicker()" style="
+        width:26px;height:26px;background:rgba(255,255,255,.12);border:none;
+        border-radius:50%;color:#fff;font-size:14px;cursor:pointer;flex-shrink:0;
+        display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+
+    <!-- 시설 선택 목록 -->
+    <div style="padding:12px 16px 6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:10px;font-weight:900;color:#888;letter-spacing:.8px">출력할 시설 선택</span>
+        <div style="display:flex;gap:6px;">
+          <button onclick="dfpToggleAll(true)"  style="font-size:10px;font-weight:700;color:#1D6FA4;background:#EBF4FB;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;">전체 선택</button>
+          <button onclick="dfpToggleAll(false)" style="font-size:10px;font-weight:700;color:#888;background:#F0EDE6;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;">전체 해제</button>
+        </div>
+      </div>
+      <div id="dfp-fac-list" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 예약 없을 때 안내 -->
+    <div id="dfp-empty" style="display:none;padding:22px;text-align:center;">
+      <div style="font-size:24px;margin-bottom:6px">📭</div>
+      <div style="font-size:12px;font-weight:700;color:#999">해당 날짜에 예약이 없어요</div>
+      <div style="font-size:10px;color:#CCC;margin-top:3px">달력에서 다른 날짜를 선택해주세요</div>
+    </div>
+
+    <!-- 푸터 버튼 -->
+    <div style="padding:10px 16px 14px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #F0EDE6;margin-top:6px">
+      <button onclick="closeDateFacilityPicker()" style="
+        padding:8px 16px;border:none;border-radius:8px;background:#F0EDE6;
+        color:#555;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">취소</button>
+      <button id="dfp-print-btn" onclick="dfpDoPrint()" style="
+        padding:8px 18px;border:none;border-radius:8px;background:#1A1714;
+        color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">🖨️ 출력</button>
     </div>
   </div>
 </div>
@@ -1672,19 +1725,123 @@ function printFacility(){
   openPrint(body);
 }
 
-/* ③ 날짜 상세 */
-function printDate(){
+/* ③ 날짜 상세 — 시설 선택 피커 */
+function openDateFacilityPicker(){
   if(!selDay){
+    closePrintDialog();
     alert("먼저 달력에서 날짜를 선택하세요.");
-    closePrintDialog(); return;
+    return;
   }
   const ds=dk(curYear,curMonth,selDay);
   const dow=WEEK[new Date(curYear,curMonth,selDay).getDay()];
-  const res=DATA.filter(r=>ds>=r.시작&&ds<r.종료);
-  let body=printHead(`${curYear}년 ${parseInt(p(curMonth+1))}월 ${selDay}일 (${dow}) 예약 상세`);
-  body+=`<div style="font-size:10px;color:#888;margin-bottom:12px">이 날짜에 체크인 중인 예약 · 총 ${res.length}건</div>`;
-  if(!res.length){body+=`<div style="padding:30px;text-align:center;color:#CCC;font-size:13px">예약 내역이 없습니다</div>`;}
-  else{
+  const allRes=DATA.filter(r=>ds>=r.시작&&ds<r.종료);
+
+  /* 날짜 라벨 */
+  document.getElementById("dfp-date-label").textContent=
+    `${curYear}년 ${curMonth+1}월 ${selDay}일 (${dow}) · 총 ${allRes.length}건`;
+
+  const listEl=document.getElementById("dfp-fac-list");
+  const emptyEl=document.getElementById("dfp-empty");
+  const printBtn=document.getElementById("dfp-print-btn");
+  listEl.innerHTML="";
+
+  if(!allRes.length){
+    listEl.style.display="none";
+    emptyEl.style.display="block";
+    printBtn.disabled=true; printBtn.style.opacity=".4";
+  } else {
+    listEl.style.display="flex";
+    emptyEl.style.display="none";
+    printBtn.disabled=false; printBtn.style.opacity="1";
+
+    /* 시설 그룹별로 묶어 체크박스 생성 */
+    const grpMap={};
+    allRes.forEach(r=>{
+      if(!grpMap[r.그룹]) grpMap[r.그룹]=[];
+      grpMap[r.그룹].push(r);
+    });
+
+    Object.entries(grpMap).forEach(([grp,rows])=>{
+      const loc=getLoc(grp);
+      const vipCnt=rows.filter(r=>r.vip==="사용").length;
+      const id="dfp-chk-"+grp.replace(/\s/g,"_");
+      const item=document.createElement("label");
+      item.style.cssText=`display:flex;align-items:center;gap:10px;padding:9px 11px;
+        background:#FAFAF8;border:1.5px solid #E8E4DC;border-radius:10px;cursor:pointer;
+        transition:border-color .12s,background .12s;`;
+      item.htmlFor=id;
+      item.innerHTML=`
+        <input type="checkbox" id="${id}" value="${grp}" checked
+          style="width:16px;height:16px;accent-color:${loc.color};cursor:pointer;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:7px;flex:1;min-width:0">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${loc.color};flex-shrink:0"></span>
+          <span style="font-size:12px;font-weight:700;color:#1A1714;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${grp}</span>
+          ${vipCnt?`<span style="font-size:9px;background:#FEF3C7;color:#B45309;padding:1px 6px;border-radius:8px;font-weight:800;flex-shrink:0">⭐ VIP</span>`:""}
+        </div>
+        <span style="font-size:11px;font-weight:900;color:${loc.color};background:${loc.light};
+          border-radius:10px;padding:2px 9px;flex-shrink:0">${rows.length}건</span>`;
+      /* 체크 상태 변경시 테두리 색 변경 */
+      item.querySelector("input").addEventListener("change", function(){
+        item.style.borderColor=this.checked?loc.color:"#E8E4DC";
+        item.style.background=this.checked?"#FAFAF8":"#F5F5F5";
+      });
+      item.style.borderColor=loc.color;
+      listEl.appendChild(item);
+    });
+  }
+
+  closePrintDialog();
+  document.getElementById("date-fac-overlay").style.display="flex";
+}
+
+function closeDateFacilityPicker(){
+  document.getElementById("date-fac-overlay").style.display="none";
+}
+
+function dfpToggleAll(checked){
+  document.querySelectorAll("#dfp-fac-list input[type=checkbox]").forEach(cb=>{
+    cb.checked=checked;
+    const label=cb.closest("label");
+    const grp=cb.value;
+    const loc=getLoc(grp);
+    label.style.borderColor=checked?loc.color:"#E8E4DC";
+    label.style.background=checked?"#FAFAF8":"#F5F5F5";
+  });
+}
+
+function dfpDoPrint(){
+  const selected=[...document.querySelectorAll("#dfp-fac-list input[type=checkbox]:checked")]
+    .map(cb=>cb.value);
+  if(!selected.length){ alert("출력할 시설을 하나 이상 선택해주세요."); return; }
+  closeDateFacilityPicker();
+  printDate(selected);
+}
+
+function printDate(filterGrps){
+  const ds=dk(curYear,curMonth,selDay);
+  const dow=WEEK[new Date(curYear,curMonth,selDay).getDay()];
+  let res=DATA.filter(r=>ds>=r.시작&&ds<r.종료);
+  const isFiltered=filterGrps&&filterGrps.length<Object.keys(LOCS).length;
+  if(filterGrps) res=res.filter(r=>filterGrps.includes(r.그룹));
+  const facLabel=filterGrps&&isFiltered?` (${filterGrps.join("·")})`:' (전체)';
+  let body=printHead(`${curYear}년 ${curMonth+1}월 ${selDay}일 (${dow}) 예약 상세${facLabel}`);
+  body+=`<div style="font-size:10px;color:#888;margin-bottom:12px">`;
+  if(filterGrps&&isFiltered){
+    filterGrps.forEach(grp=>{
+      const loc=getLoc(grp);
+      body+=`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${loc.color}"></span>
+        <span style="font-weight:700;color:${loc.color}">${grp}</span></span>`;
+    });
+    body+=`<span style="margin-left:4px">· ${res.length}건</span>`;
+  } else {
+    body+=`이 날짜에 체크인 중인 전체 예약 · 총 ${res.length}건`;
+  }
+  body+=`</div>`;
+  if(!res.length){
+    body+=`<div style="padding:30px;text-align:center;color:#CCC;font-size:13px">선택한 시설의 예약 내역이 없습니다</div>`;
+  } else {
     body+=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">`;
     res.forEach(r=>{
       const loc=getLoc(r.그룹);
