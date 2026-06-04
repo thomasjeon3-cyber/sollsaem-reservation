@@ -2596,13 +2596,23 @@ function mfsToggleStatus(el){
   el.classList.add("on"); mobStatus=el.dataset.val;
 }
 function mfsFacToggle(el,grp){
+  /* [] = 전체 표시 상태. 하나라도 해제 시 먼저 전체 목록으로 초기화 후 제거 */
+  if(mobFacFilter.length===0){
+    mobFacFilter=Object.keys(LOCS); /* 현재 사용 중인 모든 시설로 채우기 */
+  }
   el.classList.toggle("on");
-  if(el.classList.contains("on")){ if(!mobFacFilter.includes(grp)) mobFacFilter.push(grp); }
-  else { mobFacFilter=mobFacFilter.filter(g=>g!==grp); }
+  if(el.classList.contains("on")){
+    if(!mobFacFilter.includes(grp)) mobFacFilter.push(grp);
+  } else {
+    mobFacFilter=mobFacFilter.filter(g=>g!==grp);
+  }
+  /* 모든 시설이 다시 선택되면 [] (전체)로 리셋 */
+  if(mobFacFilter.length===Object.keys(LOCS).length) mobFacFilter=[];
 }
 function mfsFacAll(on){
+  /* 전체 선택: [] 로 초기화 (= 모두 표시) */
   mobFacFilter=[];
-  document.querySelectorAll("#mfs-fac-chips .mfs-chip").forEach(c=>c.classList.toggle("on",on));
+  document.querySelectorAll("#mfs-fac-chips .mfs-chip").forEach(c=>c.classList.add("on"));
 }
 function mfsMonthToggle(el,m){
   document.querySelectorAll("#mfs-month-chips .mfs-chip").forEach(c=>c.classList.remove("on"));
