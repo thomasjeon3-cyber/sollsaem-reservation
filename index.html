@@ -642,7 +642,11 @@ body {
 /* ════════════════════════════════
    PC / MOBILE VIEW 분리
 ════════════════════════════════ */
-.pc-view     { display: block; }
+/* pc-view: #app flex 체인을 content까지 정상 전달 */
+.pc-view {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; overflow: hidden;
+}
 .mobile-view { display: none; }
 
 @media (max-width: 768px) {
