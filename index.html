@@ -854,45 +854,103 @@ body {
 </div>
 
 <!-- PRINT DIALOG -->
+<style>
+/* ── 출력 다이얼로그 추가 스타일 ── */
+.psec-title {
+  font-size: 9px; font-weight: 900; letter-spacing: 1px; color: #AAA;
+  padding: 10px 16px 5px; display: flex; align-items: center; gap: 6px;
+}
+.psec-title::before { content:''; display:inline-block; width:3px; height:10px; border-radius:2px; background:#CCC; }
+.prange-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 16px 8px;
+}
+.prange-sel {
+  flex: 1; padding: 5px 6px; border: 1.5px solid #E8E4DC;
+  border-radius: 7px; font-family: inherit; font-size: 12px;
+  font-weight: 700; color: #1A1714; background: #F9F7F4;
+  outline: none; cursor: pointer;
+}
+.prange-arrow { color: #AAA; font-size: 13px; font-weight: 700; flex-shrink:0; }
+.pdivider { height: 1px; background: #F0EDE6; margin: 4px 0; }
+.popt-grid { padding: 0 16px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.popt-full { grid-column: span 2; }
+</style>
+
 <div id="print-overlay" style="
   display:none; position:fixed; inset:0; z-index:9100;
   background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
   align-items:center; justify-content:center;">
   <div style="
-    background:#fff; border-radius:18px; width:92%; max-width:480px;
+    background:#fff; border-radius:18px; width:92%; max-width:500px;
+    max-height:92vh; overflow-y:auto;
     box-shadow:0 24px 64px rgba(0,0,0,.3); overflow:hidden;
     animation:modalIn .18s ease;">
-    <div style="background:#1A1714; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+
+    <!-- 헤더 -->
+    <div style="background:#1A1714;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:1">
       <div>
         <div style="font-size:15px;font-weight:900;color:#fff">🖨️ 출력 형식 선택</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">원하는 출력 방식을 선택하세요</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:1px">리스트 또는 달력 형태로 출력</div>
       </div>
-      <button onclick="closePrintDialog()" style="
-        width:28px;height:28px;background:rgba(255,255,255,.12);border:none;
-        border-radius:50%;color:#fff;font-size:16px;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;">✕</button>
+      <button onclick="closePrintDialog()" style="width:28px;height:28px;background:rgba(255,255,255,.12);border:none;border-radius:50%;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
-    <!-- 월 선택 바 -->
-    <div style="padding:10px 16px 0; display:flex; align-items:center; gap:8px;">
-      <span style="font-size:11px;font-weight:700;color:#555;flex-shrink:0">출력 월 선택</span>
-      <select id="print-year-sel" style="flex:1;padding:5px 8px;border:1.5px solid #E8E4DC;border-radius:7px;font-family:inherit;font-size:12px;font-weight:700;color:#1A1714;background:#F9F7F4;outline:none;cursor:pointer"></select>
-      <select id="print-month-sel" style="flex:1;padding:5px 8px;border:1.5px solid #E8E4DC;border-radius:7px;font-family:inherit;font-size:12px;font-weight:700;color:#1A1714;background:#F9F7F4;outline:none;cursor:pointer"></select>
+
+    <!-- ── 리스트 형태 섹션 ── -->
+    <div class="psec-title">📋 리스트 형태 출력</div>
+
+    <!-- 기간 범위 선택 -->
+    <div style="padding:0 16px 4px;font-size:10px;font-weight:700;color:#888">출력 기간</div>
+    <div class="prange-row">
+      <select id="print-y1" class="prange-sel"></select>
+      <select id="print-m1" class="prange-sel"></select>
+      <span class="prange-arrow">→</span>
+      <select id="print-y2" class="prange-sel"></select>
+      <select id="print-m2" class="prange-sel"></select>
     </div>
-    <div style="padding:10px 16px 0; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+
+    <div class="popt-grid">
       <button class="popt" onclick="doPrint('monthly')">
         <div class="popt-icon">📅</div>
-        <div class="popt-title">월별 전체 예약</div>
-        <div class="popt-desc">선택한 월의 전체 예약을<br>날짜순 표로 출력</div>
+        <div class="popt-title">전체 예약 목록</div>
+        <div class="popt-desc">선택 기간의 전체 예약<br>날짜순 표로 출력</div>
       </button>
-      <button class="popt" onclick="doPrint('facility')">
+      <button class="popt" onclick="openPrintFacilityPicker()">
         <div class="popt-icon">🏨</div>
         <div class="popt-title">시설별 예약현황</div>
-        <div class="popt-desc">선택한 월을 시설별로<br>구분하여 출력</div>
+        <div class="popt-desc">시설 선택 후<br>구분 표로 출력</div>
       </button>
+    </div>
+
+    <div class="pdivider"></div>
+
+    <!-- ── 달력 형태 섹션 ── -->
+    <div class="psec-title">🗓 달력 형태 출력</div>
+
+    <!-- 달력 기준 월 선택 -->
+    <div style="padding:0 16px 4px;font-size:10px;font-weight:700;color:#888">출력 월</div>
+    <div class="prange-row" style="padding-bottom:10px">
+      <select id="print-year-sel" class="prange-sel"></select>
+      <select id="print-month-sel" class="prange-sel"></select>
+    </div>
+
+    <div class="popt-grid">
+      <button class="popt popt-full" onclick="doPrint('calendar')">
+        <div class="popt-icon">📆</div>
+        <div class="popt-title">달력 형태 출력</div>
+        <div class="popt-desc">예약 바가 표시된 달력을 그대로 출력 · 시설 색상 구분</div>
+      </button>
+    </div>
+
+    <div class="pdivider"></div>
+
+    <!-- ── 기타 ── -->
+    <div class="psec-title">기타</div>
+    <div class="popt-grid" style="padding-bottom:14px">
       <button class="popt" onclick="openDateFacilityPicker()">
         <div class="popt-icon">📋</div>
         <div class="popt-title">날짜 상세</div>
-        <div class="popt-desc">선택한 날짜 예약을<br>시설별로 선택 출력</div>
+        <div class="popt-desc">선택한 날짜의<br>예약 카드 출력</div>
       </button>
       <button class="popt" onclick="doPrint('summary')">
         <div class="popt-icon">📊</div>
@@ -900,7 +958,8 @@ body {
         <div class="popt-desc">시설별 건수·박수·<br>점유율 요약표 출력</div>
       </button>
     </div>
-    <div style="padding:8px 16px 14px; font-size:10px; color:#AAA; text-align:center;">
+
+    <div style="padding:0 16px 12px;font-size:10px;color:#AAA;text-align:center;">
       새 탭에서 인쇄 미리보기가 열립니다 · Ctrl+P 로 인쇄
     </div>
   </div>
@@ -955,6 +1014,37 @@ body {
       <button id="dfp-print-btn" onclick="dfpDoPrint()" style="
         padding:8px 18px;border:none;border-radius:8px;background:#1A1714;
         color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">🖨️ 출력</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRINT FACILITY PICKER -->
+<div id="pfac-overlay" style="
+  display:none;position:fixed;inset:0;z-index:9200;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:18px;width:92%;max-width:400px;
+    box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden;animation:modalIn .18s ease;">
+    <div style="background:#1A1714;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:#fff">🏨 출력할 시설 선택</div>
+        <div id="pfac-sub" style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px"></div>
+      </div>
+      <button onclick="closePrintFacilityPicker()" style="width:26px;height:26px;background:rgba(255,255,255,.12);border:none;border-radius:50%;color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>
+    </div>
+    <div style="padding:12px 16px 6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:10px;font-weight:900;color:#888;letter-spacing:.8px">시설을 선택하세요</span>
+        <div style="display:flex;gap:6px;">
+          <button onclick="pfacToggleAll(true)"  style="font-size:10px;font-weight:700;color:#1D6FA4;background:#EBF4FB;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;">전체 선택</button>
+          <button onclick="pfacToggleAll(false)" style="font-size:10px;font-weight:700;color:#888;background:#F0EDE6;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;">전체 해제</button>
+        </div>
+      </div>
+      <div id="pfac-list" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;"></div>
+    </div>
+    <div style="padding:10px 16px 14px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #F0EDE6;margin-top:8px;">
+      <button onclick="closePrintFacilityPicker()" style="padding:8px 16px;border:none;border-radius:8px;background:#F0EDE6;color:#555;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">취소</button>
+      <button onclick="pfacDoPrint()" style="padding:8px 18px;border:none;border-radius:8px;background:#1A1714;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">🖨️ 출력</button>
     </div>
   </div>
 </div>
@@ -1195,7 +1285,7 @@ body {
 
 <script>
 /* ══ CONFIG ══ */
-const CSV_FILE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNqEH0rXZtJuzWD2uL2Qo2daIqSzTUcYBtoRbE7xhJZ2sDJkhdc4yUh7tPpqNJxRoq2NFQcgmLHQFV/pub?gid=1555270590&single=true&output=csv";
+const CSV_FILE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNqEH0rXZtJuzWD2uL2Qo2daIqSzTUcYBtoRbE7xhJZ2sDJkhdc4yUh7tPpqNJxRoq2NFQcgmLHQFV/pub?gid=1555270590&single=true&output=csv&t=" + Date.now();
 const COL_MAP = {
   "부서":"부서","신청자":"신청자","사용일자(시작)":"시작","사용일자(종료)":"종료",
   "사용자":"사용자","사용지역":"지역","사용방갯수":"방수","(구)VIP룸":"vip","사용목적":"목적","호실":"호실"
@@ -1954,16 +2044,28 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModalBtn(); 
 
 /* ══ PRINT DIALOG ══ */
 function openPrintDialog(){
-  /* 연도 옵션 채우기 */
+  /* 연도 목록 */
+  const years=[...new Set(DATA.map(r=>r.시작.slice(0,4)))].sort();
+  /* 달력 출력 월 셀렉터 */
   const ySel=document.getElementById("print-year-sel");
   const mSel=document.getElementById("print-month-sel");
   if(!ySel.options.length){
-    const years=[...new Set(DATA.map(r=>r.시작.slice(0,4)))].sort();
     years.forEach(y=>{ const o=document.createElement("option");o.value=y;o.textContent=y+"년";ySel.appendChild(o); });
     MONTHS.forEach((m,i)=>{ const o=document.createElement("option");o.value=i;o.textContent=m;mSel.appendChild(o); });
   }
-  ySel.value=String(curYear);
-  mSel.value=String(curMonth);
+  ySel.value=String(curYear); mSel.value=String(curMonth);
+  /* 리스트 기간 범위 셀렉터 */
+  ["print-y1","print-y2"].forEach(id=>{
+    const el=document.getElementById(id); if(!el)return;
+    el.innerHTML=""; years.forEach(y=>{const o=document.createElement("option");o.value=y;o.textContent=y+"년";el.appendChild(o);});
+    el.value=String(curYear);
+  });
+  ["print-m1","print-m2"].forEach(id=>{
+    const el=document.getElementById(id); if(!el)return;
+    el.innerHTML=""; MONTHS.forEach((m,i)=>{const o=document.createElement("option");o.value=i;o.textContent=m;el.appendChild(o);});
+  });
+  document.getElementById("print-m1").value=String(curMonth);
+  document.getElementById("print-m2").value=String(curMonth);
   document.getElementById("print-overlay").style.display="flex";
 }
 function getPrintYM(){
@@ -1971,6 +2073,27 @@ function getPrintYM(){
     y: parseInt(document.getElementById("print-year-sel").value||curYear),
     m: parseInt(document.getElementById("print-month-sel").value??curMonth)
   };
+}
+/* 리스트 출력 기간 범위 */
+function getPrintRange(){
+  const y1=parseInt(document.getElementById("print-y1")?.value||curYear);
+  const m1=parseInt(document.getElementById("print-m1")?.value??curMonth);
+  const y2=parseInt(document.getElementById("print-y2")?.value||curYear);
+  const m2=parseInt(document.getElementById("print-m2")?.value??curMonth);
+  /* y1m1 > y2m2 면 스왑 */
+  if(y1*12+m1 > y2*12+m2) return {y1:y2,m1:m2,y2:y1,m2:m1};
+  return {y1,m1,y2,m2};
+}
+/* 기간 내 데이터 필터 */
+function filterByRange(y1,m1,y2,m2){
+  const start=`${y1}-${p(m1+1)}-01`;
+  const endD=new Date(y2,m2+1,0); /* 종료월 말일 */
+  const end=`${y2}-${p(m2+1)}-${p(endD.getDate())}`;
+  return DATA.filter(r=>r.시작<=end && r.종료>start);
+}
+function rangeLabel(y1,m1,y2,m2){
+  if(y1===y2&&m1===m2) return `${y1}년 ${MONTHS[m1]}`;
+  return `${y1}년 ${MONTHS[m1]} ~ ${y2}년 ${MONTHS[m2]}`;
 }
 function closePrintDialog(){
   document.getElementById("print-overlay").style.display="none";
@@ -2010,14 +2133,14 @@ h1{font-size:16px;font-weight:900;margin-bottom:2px}
 <div class="fleg">${facs}</div>`;
 }
 
-/* ① 월별 전체 예약 */
+/* ① 리스트 — 전체 예약 목록 (기간 범위) */
 function printMonthly(){
-  const {y:py,m:pm}=getPrintYM();
-  const mk=`${py}-${p(pm+1)}`;
-  const rows=DATA.filter(r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31"));
+  const {y1,m1,y2,m2}=getPrintRange();
+  const rows=filterByRange(y1,m1,y2,m2);
   rows.sort((a,b)=>a.시작.localeCompare(b.시작));
-  let body=printHead(`${py}년 ${MONTHS[pm]} 전체 예약현황`,py,pm);
-  body+=`<div style="font-size:10px;color:#888;margin-bottom:8px">총 ${rows.length}건</div>`;
+  const rl=rangeLabel(y1,m1,y2,m2);
+  let body=printHead(`전체 예약 목록 · ${rl}`,y1,m1);
+  body+=`<div style="font-size:10px;color:#888;margin-bottom:8px">기간: <strong>${rl}</strong> · 총 ${rows.length}건</div>`;
   body+=`<table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
   <colgroup>
     <col style="width:92px"><col style="width:72px"><col style="width:58px">
@@ -2052,13 +2175,17 @@ function printMonthly(){
   openPrint(body);
 }
 
-/* ② 시설별 예약현황 */
-function printFacility(){
-  const {y:py,m:pm}=getPrintYM();
-  let body=printHead(`${py}년 ${MONTHS[pm]} 시설별 예약현황`,py,pm);
-  const mk=`${py}-${p(pm+1)}`;
-  const monthRows=DATA.filter(r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31"));
-  Object.entries(LOCS).forEach(([grp,loc])=>{
+/* ② 리스트 — 시설별 예약현황 (시설 선택 + 기간 범위) */
+function printFacility(filterGrps){
+  const {y1,m1,y2,m2}=getPrintRange();
+  const rl=rangeLabel(y1,m1,y2,m2);
+  const monthRows=filterByRange(y1,m1,y2,m2);
+  const targets=filterGrps&&filterGrps.length?filterGrps:Object.keys(LOCS);
+  const facLabel=targets.length<Object.keys(LOCS).length?` (${targets.join("·")})`:' (전체)';
+  let body=printHead(`시설별 예약현황${facLabel} · ${rl}`,y1,m1);
+  body+=`<div style="font-size:10px;color:#888;margin-bottom:10px">기간: <strong>${rl}</strong></div>`;
+  const filteredLocs=Object.entries(LOCS).filter(([grp])=>targets.includes(grp));
+  filteredLocs.forEach(([grp,loc])=>{
     const rows=monthRows.filter(r=>r.그룹===grp);
     if(!rows.length)return;
     rows.sort((a,b)=>a.시작.localeCompare(b.시작));
@@ -2339,11 +2466,196 @@ function printSummary(){
 
 function doPrint(type){
   closePrintDialog();
-  if(type==='monthly')  printMonthly();
+  if(type==='monthly')       printMonthly();
   else if(type==='facility') printFacility();
+  else if(type==='calendar') printCalendar();
   else if(type==='date')     printDate();
   else if(type==='summary')  printSummary();
 }
+/* ── 시설별 출력 시설 피커 ── */
+function openPrintFacilityPicker(){
+  closePrintDialog();
+  const listEl=document.getElementById("pfac-list");
+  const {y1,m1,y2,m2}=getPrintRange();
+  const rl=rangeLabel(y1,m1,y2,m2);
+  document.getElementById("pfac-sub").textContent=`기간: ${rl}`;
+  listEl.innerHTML="";
+  const monthRows=filterByRange(y1,m1,y2,m2);
+  Object.entries(LOCS).forEach(([grp,loc])=>{
+    const cnt=monthRows.filter(r=>r.그룹===grp).length;
+    const id="pfac-chk-"+grp.replace(/\s/g,"_");
+    const item=document.createElement("label");
+    item.style.cssText="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#FAFAF8;border:1.5px solid #E8E4DC;border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;";
+    item.htmlFor=id;
+    item.innerHTML=`
+      <input type="checkbox" id="${id}" value="${grp}" ${cnt>0?"checked":""}
+        style="width:16px;height:16px;accent-color:${loc.color};cursor:pointer;flex-shrink:0">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${loc.color};flex-shrink:0"></span>
+      <span style="font-size:12px;font-weight:700;color:#1A1714;flex:1">${grp}</span>
+      <span style="font-size:11px;font-weight:900;color:${loc.color};background:${loc.light};border-radius:10px;padding:2px 9px;flex-shrink:0">${cnt}건</span>`;
+    const cb=item.querySelector("input");
+    cb.addEventListener("change",function(){
+      item.style.borderColor=this.checked?loc.color:"#E8E4DC";
+      item.style.background=this.checked?"#FAFAF8":"#F5F5F5";
+    });
+    if(cnt>0) item.style.borderColor=loc.color;
+    listEl.appendChild(item);
+  });
+  document.getElementById("pfac-overlay").style.display="flex";
+}
+function closePrintFacilityPicker(){
+  document.getElementById("pfac-overlay").style.display="none";
+}
+function pfacToggleAll(checked){
+  document.querySelectorAll("#pfac-list input[type=checkbox]").forEach(cb=>{
+    cb.checked=checked;
+    const label=cb.closest("label");
+    const loc=getLoc(cb.value);
+    label.style.borderColor=checked?loc.color:"#E8E4DC";
+    label.style.background=checked?"#FAFAF8":"#F5F5F5";
+  });
+}
+function pfacDoPrint(){
+  const selected=[...document.querySelectorAll("#pfac-list input[type=checkbox]:checked")].map(cb=>cb.value);
+  if(!selected.length){ alert("출력할 시설을 하나 이상 선택해주세요."); return; }
+  closePrintFacilityPicker();
+  printFacility(selected);
+}
+
+/* ── 달력 형태 출력 ── */
+function printCalendar(){
+  const {y:py,m:pm}=getPrintYM();
+  const mk=`${py}-${p(pm+1)}`;
+  const monthRows=DATA.filter(r=>r.시작.startsWith(mk)||r.종료.startsWith(mk)||(r.시작<mk+"-01"&&r.종료>mk+"-31"));
+  const firstDay=new Date(py,pm,1).getDay();
+  const dim=new Date(py,pm+1,0).getDate();
+  const now=new Date(); const ts=`${now.getFullYear()}.${p(now.getMonth()+1)}.${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+
+  /* 레인 계산 (기존 getWeekBars 로직 간소화) */
+  function getBarsForWeek(weekDates){
+    const bars=[];
+    monthRows.forEach(r=>{
+      weekDates.forEach((ds,di)=>{
+        if(ds&&ds>=r.시작&&ds<r.종료){
+          const isS=r.시작===ds||(di===0&&r.시작<ds);
+          const found=bars.find(b=>b.r===r);
+          if(!found){
+            let lane=0;
+            const used=new Set(bars.filter(b=>weekDates.some(d=>d&&d>=b.r.시작&&d<b.r.종료)&&b.lane===lane).map(b=>b.lane));
+            while(used.has(lane)) lane++;
+            bars.push({r,sc:di,isS:r.시작===ds||(di===0&&r.시작<ds),isE:false,lane});
+          }
+        }
+      });
+    });
+    /* isE 처리 */
+    bars.forEach(b=>{
+      const lastDay=weekDates.filter(d=>d&&d>=b.r.시작&&d<b.r.종료).pop();
+      const nextDay=addDay(lastDay);
+      b.isE=b.r.종료===nextDay||weekDates.indexOf(lastDay)===weekDates.length-1||!weekDates[weekDates.indexOf(lastDay)+1];
+      b.ec=weekDates.indexOf(lastDay);
+    });
+    return bars;
+  }
+
+  /* 시설 범례 */
+  const facItems=Object.entries(LOCS).map(([g,l])=>`
+    <span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px">
+      <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${l.color}"></span>
+      <span style="font-size:11px">${l.label}</span></span>`).join("");
+
+  /* 달력 HTML 생성 */
+  const WDAYS=["일","월","화","수","목","금","토"];
+  let calHtml=`<table style="width:100%;border-collapse:collapse;table-layout:fixed">
+    <colgroup>${WDAYS.map(()=>'<col style="width:14.28%">').join("")}</colgroup>
+    <thead><tr>`;
+  WDAYS.forEach((d,i)=>{
+    const c=i===0?"#DC2626":i===6?"#2563EB":"#555";
+    calHtml+=`<th style="padding:6px 0;text-align:center;font-size:11px;font-weight:700;color:${c};border-bottom:2px solid #1A1714">${d}</th>`;
+  });
+  calHtml+="</tr></thead><tbody>";
+
+  /* 주 단위 렌더 */
+  let day=1, weekNum=0;
+  while(day<=dim){
+    calHtml+='<tr style="height:90px;vertical-align:top">';
+    const weekDates=[];
+    for(let col=0;col<7;col++){
+      const isFirst=(weekNum===0&&col<firstDay);
+      const isLast=day>dim;
+      weekDates.push((!isFirst&&!isLast)?dk(py,pm,day):null);
+      if(!isFirst&&!isLast) day++;
+    }
+    /* 바 계산 */
+    const bars=getWeekBars?getWeekBars(weekDates.map(d=>d?dk(py,pm,parseInt(d.slice(-2))):null),monthRows,py,pm)
+      :getBarsForWeek(weekDates);
+    for(let col=0;col<7;col++){
+      const ds=weekDates[col];
+      if(!ds){ calHtml+='<td style="background:#F8F8F8;border:1px solid #EEE"></td>'; continue; }
+      const d=parseInt(ds.slice(-2));
+      const isT=ds===TODAY;
+      const dow=new Date(py,pm,d).getDay();
+      const nc=isT?"#fff":dow===0?"#DC2626":dow===6?"#2563EB":"#333";
+      const cellBars=bars.filter(b=>b.sc<=col&&b.ec>=col);
+      let barsHtml="";
+      cellBars.forEach(b=>{
+        const loc=getLoc(b.r.그룹);
+        const la=b.isS?"4px":"0";const ra=b.isE?"4px":"0";
+        const isVip=b.r.vip==="사용";
+        barsHtml+=`<div style="
+          height:18px;margin:1px 0;
+          background:${loc.light};color:${loc.color};
+          border-left:${b.isS?`3px solid ${loc.color}`:"none"};
+          border-radius:${la} ${ra} ${ra} ${la};
+          font-size:9px;font-weight:700;padding:0 4px;
+          overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+          display:flex;align-items:center;
+          ${isVip?`box-shadow:0 0 0 1.5px #B7950B;`:""}">
+          ${b.isS?b.r.부서:""}${isVip?" ⭐":""}
+        </div>`;
+      });
+      calHtml+=`<td style="border:1px solid #EEE;padding:3px;vertical-align:top;background:${isT?"#FFFBEB":"#fff"}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span style="font-size:11px;font-weight:${isT?900:500};color:${nc};
+            ${isT?"background:#F59E0B;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;":""}">
+            ${d}
+          </span>
+          ${cellBars.length>0?`<span style="font-size:8px;color:#AAA">${cellBars.length}건</span>`:""}
+        </div>
+        ${barsHtml}
+      </td>`;
+    }
+    calHtml+="</tr>"; weekNum++;
+  }
+  calHtml+="</tbody></table>";
+
+  const body=`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<title>달력 출력 · ${py}년 ${MONTHS[pm]}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;color:#1A1714;background:#fff;padding:12px 14px}
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{padding:8px 10px}
+  @page{margin:8mm 8mm;size:A4 landscape}
+}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #1A1714">
+  <div>
+    <div style="font-size:18px;font-weight:900">🌲 ${py}년 ${MONTHS[pm]} 예약 달력</div>
+    <div style="font-size:10px;color:#888;margin-top:3px">총 ${monthRows.length}건</div>
+  </div>
+  <div style="text-align:right">
+    <div style="margin-bottom:4px">${facItems}</div>
+    <div style="font-size:9px;color:#BBB">출력: ${ts}</div>
+  </div>
+</div>
+${calHtml}
+</body></html>`;
+  openPrint(body);
+}
+
 function openPrint(html){
   const w=window.open('','_blank','width=900,height=700');
   w.document.write(html);
