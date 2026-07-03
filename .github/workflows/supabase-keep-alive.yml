@@ -2,18 +2,27 @@ name: Supabase Keep-Alive
 
 on:
   schedule:
-    - cron: '0 9 */3 * *'
+    - cron: '0 0 * * 1,4'   # 월요일, 목요일 UTC 00:00 (주 2회)
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase DB
+      - name: DB Write Ping
         run: |
-          curl -f -s \
-            "https://rkpdlzyepazcifpmjycx.supabase.co/rest/v1/employees?select=idx&limit=1" \
+          # INSERT로 실제 DB 쓰기 (타이머 리셋 확실히 보장)
+          curl -s -X POST \
+            "https://rkpdlzyepazcifpmjycx.supabase.co/rest/v1/keepalive" \
             -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcGRsenllcGF6Y2lmcG1qeWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTU0MzUsImV4cCI6MjA5NjE3MTQzNX0.Me-eQ9Ohv4mt7gAHwt72IjLIXnrJCLLSb_6yPGEra8o" \
             -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcGRsenllcGF6Y2lmcG1qeWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTU0MzUsImV4cCI6MjA5NjE3MTQzNX0.Me-eQ9Ohv4mt7gAHwt72IjLIXnrJCLLSb_6yPGEra8o" \
-            && echo "✅ Supabase 정상 응답" \
-            || echo "❌ 응답 오류"
+            -H "Content-Type: application/json" \
+            -d '{"pinged_at": "now()"}' \
+            && echo "✅ DB ping 성공"
+
+          # 7일 이상 된 행 삭제 (테이블 크기 유지)
+          curl -s -X DELETE \
+            "https://rkpdlzyepazcifpmjycx.supabase.co/rest/v1/keepalive?pinged_at=lt.$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcGRsenllcGF6Y2lmcG1qeWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTU0MzUsImV4cCI6MjA5NjE3MTQzNX0.Me-eQ9Ohv4mt7gAHwt72IjLIXnrJCLLSb_6yPGEra8o" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrcGRsenllcGF6Y2lmcG1qeWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTU0MzUsImV4cCI6MjA5NjE3MTQzNX0.Me-eQ9Ohv4mt7gAHwt72IjLIXnrJCLLSb_6yPGEra8o" \
+            && echo "✅ 오래된 행 삭제 완료"
